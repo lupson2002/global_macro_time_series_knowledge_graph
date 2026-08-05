@@ -1,0 +1,1 @@
+"""Insight extraction package — 정규화/크로스집계/지식그래프/RAG 인사이트."""

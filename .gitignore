@@ -1,0 +1,31 @@
+# 환경·시크릿 (커밋 금지)
+.env
+cookies.txt
+*.pem
+*.key
+*.p12
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+
+# 생성 데이터·산출물 (코드 아님)
+data/
+logs/
+reports/
+obsidian_vault/
+blog_drafts/
+*.log
+tistory_draft.md
+*.bak
+
+# 로컬 도구 상태
+.ijfw/
+.code-review-graph/
+.claude/
+# 로테이션 로그 (pipeline_cron.log.1 등)
+*.log.*
+*.gz

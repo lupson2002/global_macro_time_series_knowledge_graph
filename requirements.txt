@@ -1,0 +1,53 @@
+# =====================================================================
+# Global Macro Time-Series Knowledge Graph — requirements.txt
+# Ver 3.1+4.0 — packages grouped by 3-Tier LLM + Side pipeline
+# =====================================================================
+# Each module is tagged with [Tier] for quick audit.
+# - [T1]   Tier 1 (Hot): Stage 2 structured extraction (deepseek-ai/deepseek-v4-flash via nvidia-api-proxy)
+# - [T1.5] Tier 1.5 (RAG): LanceDB semantic search (구 TurboVec 제거)
+# - [T2]   Tier 2 (Daily): Korean morning synthesis (Google Gemini)
+# - [T3]   Tier 3 (Strategic): Grand Reasoner (Anthropic/OpenAI/DeepSeek)
+# - [T3.5] Tier 3.5 (Telegram): Ver 4.0 Telegram MCP Host (Ollama Pro)
+# - [BASE] Base infra (Ingestion, Export, MCP server, RSS validator)
+# =====================================================================
+# 👑 [A25] 상한 추가 — major bump 시 파이프라인 깨짐 방지(예: numpy 3.x, mcp 2.x).
+
+# [BASE] Ingestion & export core
+youtube-transcript-api>=1.2.4,<2.0   # [BASE] YouTube captions (with proxy support)
+yt-dlp>=2026.3.17                    # [BASE] Fallback for blocked / auto-captioned videos (rolling release)
+requests>=2.34.2,<3.0                # [BASE] HTTP for RSS/Orchestrator/Telegram
+python-dotenv>=1.0.0,<2.0            # [BASE] .env loader
+markdown>=3.7,<4.0                    # [T2] 일일 리포트 MD→HTML 이메일 렌더링(Gmail 표/헤딩 가독성)
+tqdm>=4.66.0,<5.0                    # [BASE] Progress bars
+
+# [T1] Stage 2 — deepseek-ai/deepseek-v4-flash via nvidia-api-proxy (localhost:8000, 6-key rotation)
+openai>=2.41.0,<3.0                   # [T1/T2/T3] OpenAI-compatible client → nvidia-api-proxy → NVIDIA NIM (3-Tier 통일)
+pydantic>=2.0.0,<3.0                 # [T1] MacroViewSchema enforcement
+
+# [T2/T3] Tier 2(일일 한국어 종합)·Tier 3(Grand Reasoner) — NIM 통일
+#   T2: qwen/qwen2.5-7b-instruct  T3: deepseek-ai/deepseek-r1-distill-qwen-32b
+#   (구 google-genai 제거 — Gemini SDK 불필요. openai 클라이언트 재사용)
+
+# [T1.5] LanceDB RAG (Ver 4.8) — SQLite + 임베디드 벡터 DB 하이브리드 검색
+numpy>=2.4.6,<3.0                    # [T1.5] Embedder backend (vector math)
+lancedb>=0.36.0                      # [T1.5] 임베디드 Vector DB (data/lancedb_store)
+pyarrow>=25.0.0                      # [T1.5] LanceDB 테이블 스키마/벡터
+
+# [INSIGHT] 인사이트 추출 (Ver 크로스분석) — 크로스 집계/지식그래프/시각화
+pandas>=2.0                          # [INSIGHT] 크로스 집계 매트릭스
+tabulate>=0.9                        # [INSIGHT] DataFrame→마크다운 표
+networkx>=3.4                         # [INSIGHT] 공동등장 그래프 + 커뮤니티 탐지
+pyvis>=0.3                           # [INSIGHT] 인터랙티브 지식그래프 HTML
+plotly>=6.0                          # [INSIGHT] 정적 대시보드 HTML
+scikit-learn>=1.6                    # [INSIGHT] 클러스터링/차원축소 (옵션)
+
+# [T3] Grand Reasoner (Anthropic Claude 3.7+ Sonnet / OpenAI / DeepSeek)
+httpx>=0.28.1,<1.0                   # [T3] Async HTTP for Anthropic + MCP async DB
+
+# [T3.5] Telegram MCP Host (Ver 4.0) — tool-calling loop
+python-telegram-bot>=22.7,<23.0      # [T3.5] Telegram bot library
+
+# [BASE] MCP server (Claude Desktop / Cursor read-only SQLite + LanceDB RAG)
+mcp>=1.27.2,<2.0                     # [BASE] FastMCP stdio transport
+aiosqlite>=0.22.1,<1.0               # [BASE] Async SQLite for MCP tools
+aiofiles>=25.1.0,<26.0               # [BASE] Async file IO for Obsidian MD read

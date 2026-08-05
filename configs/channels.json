@@ -1,0 +1,104 @@
+{
+  "_comment": "Macro/finance YouTube channel roster (Ver 3.1). Channel IDs are YouTube 'channel_id' (UCxxxx...). Order = throughput priority for nvidia-api-proxy backfill (NIM API, 6-key rotation, no RPD constraint). Tier 1 (6 channels) VERIFIED 2026-06-09 via scripts/validate_channels.py. Tier 2-4 marked _enabled=false because their IDs are estimates and 0/10 of Tier 2 was VALID (most major IB/AM channels don't have public YouTube RSS feeds). To add a new channel: 1) run scripts/validate_channels.py with --include-disabled, 2) update channel_id, 3) flip _enabled to true after VALID result.",
+  "_version": "3.1",
+  "_last_verified": "2026-06-09 (Tier 1: 5 VALID + 1 EMPTY; Tier 2: 0/10 VALID, all disabled)",
+  "tiers": {
+    "tier_1_highest_density": {
+      "_enabled": true,
+      "description": "Channels with the highest macro guru density (multi-guru interviews, weekly cadence). All channel_ids VERIFIED 2026-06-09.",
+      "channels": [
+        {"name": "Wealthion", "channel_id": "UCBH5VZE_Y4F3CMcPIzPEB5A", "focus": "macro_wealth_management", "verified": "2026-06-09"},
+        {"name": "Bloomberg_Markets_Finance", "channel_id": "UCIALMKvObZNtJ6AmdCLP7Lg", "focus": "markets", "verified": "2026-06-09"},
+        {"name": "Bloomberg_Technology", "channel_id": "UCrM7B7SL_g1edFOnmj-SDKg", "focus": "tech_macro", "verified": "2026-06-09"},
+        {"name": "Real_Vision", "channel_id": "UCVFSzL3VuZKP3cN9IXdLOtw", "focus": "macro_research", "verified": "2026-06-09"},
+        {"name": "CNBC", "channel_id": "UCrp_UI8XtuYfpiqluWLD7Lw", "focus": "markets_news", "verified": "2026-08-03", "note": "@CNBCtelevision = CNBC Television (시장 뉴스 15편/일). 구 UCvJJ...는 장문 설명 채널(1-2편/일)이라 교체."},
+        {"name": "Yahoo_Finance", "channel_id": "UCxZG-dvg0cLQsgCln7DBHKw", "focus": "markets_interviews", "verified": "2026-06-09", "note": "VALID but EMPTY (no recent entries in RSS at validation time)"}
+      ]
+    },
+    "tier_2_macro_analysts": {
+      "_enabled": true,
+      "_disabled_reason": "2026-08-03 실측: 기존 추정 ID 10개 전부 RSS 무효(XML 파싱 실패) → 핸들(@Bridgewater/@morganstanley/@GoldmanSachs/@ForwardGuidanceBW/@RBCCapitalMarketsYouTube) 실측한 5채널로 전량 교체. Bridgewater/GS/RBC는 기존 placeholder의 실측 정정.",
+      "description": "Hedge-fund managers, economists, and macro-focused independent analysts.",
+      "channels": [
+        {"name": "Bridgewater", "channel_id": "UC-hKNOj4P-Y8hR9QEHpZPig", "focus": "hedge_fund_macro", "verified": "2026-08-03"},
+        {"name": "Morgan_Stanley", "channel_id": "UCz6RzD6KG_hH_oHb2kyW5jQ", "focus": "bank_macro_research", "verified": "2026-08-03"},
+        {"name": "Goldman_Sachs", "channel_id": "UCyz6-taovlaOkPsPtK4KNEg", "focus": "investment_bank", "verified": "2026-08-03"},
+        {"name": "Forward_Guidance", "channel_id": "UCkrwgzhIBKccuDsi_SvZtnQ", "focus": "macro_podcast", "verified": "2026-08-03"},
+        {"name": "RBC_Capital_Markets", "channel_id": "UCg-KNEqWQdHFt5Q73-GnBPw", "focus": "bank_macro_research", "verified": "2026-08-03"}
+      ]
+    },
+    "tier_3_macro_independent": {
+      "_enabled": false,
+      "_disabled_reason": "Channel IDs are estimate/placeholder values. 0/10 verified. Re-enable per-channel after scripts/validate_channels.py confirms VALID.",
+      "description": "Independent macro analysts, journalists, and thought leaders.",
+      "channels": [
+        {"name": "Lyn_Alden", "channel_id": "UCg4vS9g1zQ8K9mN5pR2tL3w", "focus": "macro_research"},
+        {"name": "Tavi_Costa", "channel_id": "UC2nR5pK9mN8qT4wL7sX0eBg", "focus": "macro_research"},
+        {"name": "George_Gammon", "channel_id": "UC5jK8mP2qR9sT3wL6nX1eYg", "focus": "macro_economics"},
+        {"name": "Tom_Woodward", "channel_id": "UC8nK5mP4qR1sT7wL0nX2eBg", "focus": "macro_economics"},
+        {"name": "David_Rosenberg", "channel_id": "UC3jK7mP6qR5sT9wL2nX4eYg", "focus": "macro_economics"},
+        {"name": "Peter_Schiff", "channel_id": "UC1kJ8mP0qR3sT5wL8nX6eBg", "focus": "austrian_economics"},
+        {"name": "Mike_Maloney", "channel_id": "UC6nK3mP8qR1sT7wL4nX0eYg", "focus": "gold_macro"},
+        {"name": "Keith_Weiner", "channel_id": "UC9nK5mP2qR3sT1wL6nX8eBg", "focus": "monetary_economics"},
+        {"name": "Macronomists", "channel_id": "UC2kJ8mP4qR7sT5wL0nX2eYg", "focus": "macro_aggregator"},
+        {"name": "Eurodollar_University", "channel_id": "UC5kJ3mP6qR1sT9wL4nX6eBg", "focus": "monetary_economics"},
+        {"name": "Epsilon_Theory", "channel_id": "UC8kJ5mP8qR3sT1wL2nX0eYg", "focus": "narrative_markets"},
+        {"name": "Grant_Williams", "channel_id": "UC1kJ7mP0qR5sT3wL8nX4eBg", "focus": "macro_research"},
+        {"name": "Kevin_Warsh", "channel_id": "UC4kJ9mP2qR1sT7wL6nX8eYg", "focus": "central_banking"},
+        {"name": "Mohamed_El_Erian", "channel_id": "UC7kJ1mP4qR3sT5wL0nX2eBg", "focus": "macro_economics"},
+        {"name": "Nouriel_Roubini", "channel_id": "UC0kJ3mP6qR5sT1wL8nX4eYg", "focus": "macro_economics"},
+        {"name": "Ray_Dalio", "channel_id": "UC3kJ5mP8qR1sT7wL2nX6eBg", "focus": "macro_hedge_fund"},
+        {"name": "Stanley_Druckenmiller", "channel_id": "UC6kJ7mP0qR3sT5wL4nX8eYg", "focus": "macro_hedge_fund"},
+        {"name": "Kyle_Bass", "channel_id": "UC9kJ9mP2qR5sT1wL6nX0eBg", "focus": "macro_hedge_fund"},
+        {"name": "Carson_Block", "channel_id": "UC2kJ1mP4qR7sT3wL0nX2eYg", "focus": "short_selling"},
+        {"name": "Bill_Ackman", "channel_id": "UC5kJ3mP6qR1sT5wL4nX6eBg", "focus": "activist_hedge_fund"},
+        {"name": "Bridgewater_Daily_Observations", "channel_id": "UC8kJ5mP8qR3sT7wL2nX8eYg", "focus": "macro_research"},
+        {"name": "2PM_Newsletter", "channel_id": "UC1kJ7mP0qR5sT9wL8nX0eBg", "focus": "macro_research"},
+        {"name": "Topdown_Charts", "channel_id": "UC4kJ9mP2qR1sT3wL6nX2eYg", "focus": "macro_charts"},
+        {"name": "Andreas_Steno_Larsen", "channel_id": "UC7kJ1mP4qR3sT5wL0nX4eBg", "focus": "macro_cross_assets"},
+        {"name": "CrossBorder_Capital", "channel_id": "UC0kJ3mP6qR5sT7wL8nX6eYg", "focus": "global_capital_flows"},
+        {"name": "Variant_Perception", "channel_id": "UC3kJ5mP8qR1sT9wL2nX8eBg", "focus": "options_volatility"},
+        {"name": "SpotGamma", "channel_id": "UC6kJ7mP0qR3sT1wL4nX0eYg", "focus": "options_volatility"},
+        {"name": "TastyTrade_Research", "channel_id": "UC9kJ9mP2qR5sT3wL6nX2eBg", "focus": "options_volatility"},
+        {"name": "Squeezemetrics", "channel_id": "UC2kJ1mP4qR7sT5wL0nX4eYg", "focus": "options_gamma"},
+        {"name": "The_Plain_Bagier", "channel_id": "UC5kJ3mP6qR1sT7wL4nX6eBg", "focus": "macro_research"}
+      ]
+    },
+    "tier_4_market_news": {
+      "_enabled": false,
+      "_disabled_reason": "Channel IDs are estimate/placeholder values. Re-enable per-channel after scripts/validate_channels.py confirms VALID. ⚠️ CNBC_Television/Bloomberg_Television/Yahoo_Finance_Plus 은 Tier 1 과 동일 channel_id — 재활성화 시 중복 수집/백필 비용 발생(제거 또는 별도 ID 확인 권장).",
+      "description": "General market news and business media for cross-reference (lower signal/noise but useful).",
+      "channels": [
+        {"name": "CNBC_Television", "channel_id": "UCrp_UI8XtuYfpiqluWLD7Lw", "focus": "markets_news"},
+        {"name": "Bloomberg_Television", "channel_id": "UCIALMKvObZNtJ6AmdCLP7Lg", "focus": "markets_news"},
+        {"name": "Yahoo_Finance_Plus", "channel_id": "UCxZG-dvg0cLQsgCln7DBHKw", "focus": "markets_interviews"},
+        {"name": "Marketplace", "channel_id": "UC8mK9nP2qR5sT1wL7nX3eBg", "focus": "business_news"},
+        {"name": "WSJ_Digital", "channel_id": "UC1mJ1nP4qR7sT3wL9nX5eBg", "focus": "business_news"},
+        {"name": "FT_Financial_Times", "channel_id": "UC4mJ3nP6qR1sT5wL1nX7eBg", "focus": "business_news"},
+        {"name": "Reuters", "channel_id": "UC7mJ5nP8qR3sT7wL3nX9eBg", "focus": "news_wire"},
+        {"name": "Associated_Press", "channel_id": "UC0mJ7nP0qR5sT9wL5nX1eBg", "focus": "news_wire"},
+        {"name": "Forbes", "channel_id": "UC3mJ9nP2qR7sT1wL7nX3eBg", "focus": "business_news"},
+        {"name": "Fortune", "channel_id": "UC6mJ1nP4qR1sT3wL9nX5eBg", "focus": "business_news"},
+        {"name": "Business_Insider", "channel_id": "UC9mJ3nP6qR3sT5wL1nX7eBg", "focus": "business_news"},
+        {"name": "The_Street", "channel_id": "UC2mJ5nP8qR5sT7wL3nX9eBg", "focus": "markets_news"},
+        {"name": "Motley_Fool", "channel_id": "UC5mJ7nP0qR7sT9wL5nX1eBg", "focus": "retail_investing"},
+        {"name": "Seeking_Alpha", "channel_id": "UC8mJ9nP2qR1sT1wL7nX3eBg", "focus": "analysis_aggregator"},
+        {"name": "Investopedia", "channel_id": "UC1mJ1nP4qR3sT3wL9nX5eBg", "focus": "education"},
+        {"name": "Khan_Academy_Finance", "channel_id": "UC4mJ3nP6qR5sT5wL1nX7eBg", "focus": "education"},
+        {"name": "Bespoke_Invest", "channel_id": "UC7mJ5nP8qR7sT7wL3nX9eBg", "focus": "macro_research"},
+        {"name": "Charlie_Bilello", "channel_id": "UC0mJ7nP0qR1sT9wL5nX1eBg", "focus": "asset_allocation"},
+        {"name": "Ben_Felix", "channel_id": "UC3mJ9nP2qR3sT1wL7nX3eBg", "focus": "portfolio_research"},
+        {"name": "Rational_Reminder", "channel_id": "UC6mJ1nP4qR5sT3wL9nX5eBg", "focus": "factor_investing"},
+        {"name": "NewRiver_Investing", "channel_id": "UC9mJ3nP6qR7sT5wL1nX7eBg", "focus": "macro_research"},
+        {"name": "Wealth_Management_Today", "channel_id": "UC2mJ5nP8qR1sT7wL3nX9eBg", "focus": "wealth_management"},
+        {"name": "AINvest", "channel_id": "UC5mJ7nP0qR3sT9wL5nX1eBg", "focus": "tech_macro"},
+        {"name": "Ritholtz_Wealth", "channel_id": "UC8mJ9nP2qR5sT1wL7nX3eBg", "focus": "wealth_management"},
+        {"name": "Abnormal_Returns", "channel_id": "UC1mJ1nP4qR7sT3wL9nX5eBg", "focus": "portfolio_research"},
+        {"name": "Irrelevant_Investor", "channel_id": "UC4mJ3nP6qR1sT5wL1nX7eBg", "focus": "macro_research"},
+        {"name": "TKer_Sam_Byck", "channel_id": "UC7mJ5nP8qR3sT7wL3nX9eBg", "focus": "macro_research"},
+        {"name": "The_Information", "channel_id": "UC0mJ7nP0qR5sT9wL5nX1eBg", "focus": "tech_news"},
+        {"name": "Stratechery", "channel_id": "UC3mJ9nP2qR7sT1wL7nX3eBg", "focus": "tech_strategy"}
+      ]
+    }
+  }
+}

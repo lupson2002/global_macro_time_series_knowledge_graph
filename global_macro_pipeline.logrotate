@@ -1,0 +1,10 @@
+/home/mikey/global_macro_time_series_knowledge_graph/pipeline_cron.log {
+    size 10M
+    weekly
+    rotate 4
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+}

@@ -1,0 +1,15 @@
+{
+  "__comment__": "Claude Desktop 또는 Cursor 설정(config.json)에 붙여넣어 사용할 수 있는 MCP 서버 구성 템플릿입니다. 이식성을 고려하여 홈 디렉토리는 환경에 맞게 변경하여 사용하십시오.",
+  "mcpServers": {
+    "llm-wiki-analyst": {
+      "command": "/home/YOUR_USERNAME/global_macro_time_series_knowledge_graph/.venv/bin/python",
+      "args": [
+        "/home/YOUR_USERNAME/global_macro_time_series_knowledge_graph/src/mcp_server.py"
+      ],
+      "env": {
+        "__comment2__": "프로젝트의 절대 경로를 환경 변수형태로 명시하여 동적 매핑이 용이하게 구성할 수 있습니다.",
+        "PROJECT_DIR": "/home/YOUR_USERNAME/global_macro_time_series_knowledge_graph"
+      }
+    }
+  }
+}
