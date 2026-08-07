@@ -12,7 +12,8 @@ Discovery -> Ingestion -> Analysis -> Relevance gate -> Persistence -> Derived p
 
 ## 2. Core ingestion sequence
 
-1. `main.py` 가 `configs/channels.json`의 활성 tier를 로드한다.
+1. `main.py`의 `build_parser()`가 공개 CLI를 정의하고 `collect_video_targets()`가 수동/RSS
+   대상을 입력 우선순위대로 중복 제거한다. 채널 목록은 `configs/channels.json`의 활성 tier에서 읽는다.
 2. `src.ingestion.fetch_video_ids_from_channel()`이 RSS에서 `(video_id, pub_date)`를 얻는다.
 3. `src.pipeline.PipelineService`가 단일 영상의 precheck부터 저장까지 조정하며 `check_processed()`로 SQLite `reports`/`skipped_videos`를 조회한다.
 4. `get_youtube_transcript()`가 youtube-transcript-api를 시도하고 yt-dlp로 폴백한다.
@@ -20,6 +21,9 @@ Discovery -> Ingestion -> Analysis -> Relevance gate -> Persistence -> Derived p
 6. JSON을 sanitize/parse하고 Pydantic soft validation과 Obsidian backlink 보정을 적용한다.
 7. `is_macro_relevant()`가 티커, 전술 신호, 비중립 점수를 기준으로 저장 여부를 결정한다.
 8. Obsidian Markdown을 먼저 기록하고 SQLite를 완료 마커로 저장한다. Markdown 실패 시 DB에 완료 표시를 남기지 않아 다음 실행에서 재시도할 수 있다.
+
+DB→Markdown backfill은 `run_backfill()`로 분리되어 있으며 기존 파일의 underscore 포함
+YouTube ID를 날짜 기반 파일명 정규식으로 판별한다.
 
 ## 3. LLM architecture
 

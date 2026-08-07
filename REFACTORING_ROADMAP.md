@@ -1,6 +1,7 @@
 # Refactoring Roadmap
 
-> Baseline: `cc28423`, 2026-08-07. 이 문서는 동작 변경 전에 작성한 위험 지도다.
+> Baseline: `cc28423`, 2026-08-07. 이 문서는 동작 변경 전에 작성한 위험 지도이며
+> 각 파동의 측정 결과를 누적한다.
 
 ## 성공 조건
 
@@ -67,3 +68,12 @@ Telegram tool loop, insight 파이프라인이다.
 - target discovery/backfill 함수는 임시 디렉터리와 mock으로 네트워크 없이 검증된다.
 - 기존 CLI 옵션, 처리 순서, 지연 적용 조건, 종료 코드가 동일하다.
 - 전체 테스트, compileall, read-only reconciliation 결과가 기준선과 동일하다.
+
+## 첫 구현 파동 결과
+
+- `build_parser()`, `collect_video_targets()`, `run_backfill()` 경계를 추출했다.
+- `main.py::main`은 192줄/32 decision points에서 93줄/11 decision points로 감소했다.
+- `main.py` 위험 점수는 16에서 11로 감소했다.
+- 수동/RSS 우선순위와 중복 제거, tier 전달, underscore video ID backfill,
+  부분 실패 종료 코드, 처리 순서와 지연 조건을 characterization test로 고정했다.
+- 공개 CLI 옵션과 저장 schema는 변경하지 않았다.

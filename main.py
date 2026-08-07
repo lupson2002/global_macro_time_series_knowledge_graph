@@ -14,8 +14,10 @@ Usage:
 """
 
 import argparse
+import json
 import re
 import sys
+from collections.abc import Iterable
 from pathlib import Path
 from tqdm import tqdm
 
@@ -35,7 +37,6 @@ from src.pipeline import (
 # 👑 [Ver 3.1] 76 매크로 채널 풀 (요건 2: Backfill Roster)
 # Stage 2 is now deepseek-ai/deepseek-v4-flash via nvidia-api-proxy (localhost:8000).
 # Channels are loaded from configs/channels.json — order = throughput priority.
-import json
 _DEFAULT_CHANNELS_PATH = Path(__file__).resolve().parent / "configs" / "channels.json"
 
 def load_channels(
@@ -80,7 +81,9 @@ DEFAULT_CHANNELS = {
     "Yahoo_Finance": "UCxZG-dvg0cLQsgCln7DBHKw",
 }
 
-def main() -> int:
+
+def build_parser() -> argparse.ArgumentParser:
+    """Build the public CLI without reading process arguments."""
     parser = argparse.ArgumentParser(description="Global Macro Time-Series Knowledge Graph Pipeline (Ver 3.0)")
     parser.add_argument("--video_id", help="YouTube Video ID or comma-separated list of IDs")
     parser.add_argument("--channel_id", help="YouTube Channel ID or comma-separated list of IDs")
@@ -102,7 +105,97 @@ def main() -> int:
                         help="[Ver 3.1] Export existing DB reports to Obsidian MD files (skips already-exported videos).")
     parser.add_argument("--tiers", default="all",
                         help="[Ver 3.1] Comma-separated tier names to include (e.g. 'tier_1_highest_density,tier_3_macro_independent') or 'all'. Default 'all'.")
-    args = parser.parse_args()
+    return parser
+
+
+def collect_video_targets(
+    args: argparse.Namespace,
+    *,
+    fetch=fetch_video_ids_from_channel,
+    channel_loader=load_channels,
+) -> list[tuple[str, str, str | None]]:
+    """Collect and de-duplicate manual/RSS targets while preserving priority."""
+    video_targets: list[tuple[str, str, str | None]] = []
+    if args.video_id:
+        vids = [vid.strip() for vid in args.video_id.split(",") if vid.strip()]
+        video_targets.extend((vid, args.source, None) for vid in vids)
+
+    if args.fetch_latest:
+        if args.channel_id:
+            cids = [cid.strip() for cid in args.channel_id.split(",") if cid.strip()]
+            channels_to_query = {
+                f"Custom_Channel_{idx}": channel_id
+                for idx, channel_id in enumerate(cids, 1)
+            }
+        else:
+            try:
+                tier_filter = None if args.tiers == "all" else [
+                    tier.strip() for tier in args.tiers.split(",") if tier.strip()
+                ]
+                channels_to_query = channel_loader(tier_filter=tier_filter)
+            except FileNotFoundError:
+                print("⚠️  configs/channels.json not found; falling back to DEFAULT_CHANNELS (7 channels).")
+                channels_to_query = DEFAULT_CHANNELS
+
+        print(f"📡 Fetching latest RSS feeds from {len(channels_to_query)} channels (max age: {args.max_age_hours}h)...")
+        for source_name, channel_id in channels_to_query.items():
+            latest_videos = fetch(channel_id, max_age_hours=args.max_age_hours)
+            print(f"   - {source_name} ({channel_id}): Found {len(latest_videos)} latest videos.")
+            video_targets.extend(
+                (video_id, source_name, pub_date)
+                for video_id, pub_date in latest_videos
+            )
+
+    seen: set[str] = set()
+    unique_targets: list[tuple[str, str, str | None]] = []
+    for video_id, source_name, upload_date in video_targets:
+        if video_id not in seen:
+            seen.add(video_id)
+            unique_targets.append((video_id, source_name, upload_date))
+    return unique_targets
+
+
+def run_backfill(
+    db_file_path: Path,
+    vault_dir_path: Path,
+    obsidian_exporter: ObsidianMDExporter,
+    schemas: Iterable[dict] | None = None,
+) -> int:
+    """Regenerate absent Markdown projections and return a process exit code."""
+    if schemas is None:
+        from src.exporter import _load_db_report_as_schema
+
+        schemas = _load_db_report_as_schema(str(db_file_path))
+    id_pattern = re.compile(r"_(\d{4}-\d{2}-\d{2})_([A-Za-z0-9_-]{11})$")
+    existing_videos: set[str] = set()
+    for md_path in vault_dir_path.rglob("*.md"):
+        match = id_pattern.search(md_path.stem)
+        if match:
+            existing_videos.add(match.group(2))
+
+    backfilled = 0
+    skipped = 0
+    backfill_failed = 0
+    for schema in schemas:
+        video_id = schema["metadata"]["video_id"]
+        if video_id in existing_videos:
+            skipped += 1
+            continue
+        try:
+            md_path = obsidian_exporter.export_markdown(schema)
+            backfilled += 1
+            tqdm.write(f"   ✓ Backfilled: {md_path.name}")
+        except Exception as exc:  # noqa: BLE001 - continue remaining projections
+            backfill_failed += 1
+            tqdm.write(f"   ❌ Backfill failed for {video_id}: {exc}")
+    print("=" * 60)
+    print(f"🏁 Backfill done.  Exported: {backfilled}  Already-on-disk: {skipped}")
+    print("=" * 60)
+    return 1 if backfill_failed else 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
 
     # Resolve paths
     project_dir = Path(__file__).resolve().parent
@@ -137,91 +230,13 @@ def main() -> int:
         obsidian_exporter=obsidian_exporter,
     )
 
-    # Collect target Video IDs
-    video_targets = []  # List of tuples (video_id, source_name, upload_date)
-    
-    import datetime
-    today_str = datetime.date.today().strftime("%Y-%m-%d")
-
-    # Mode A: Specific Video ID list
-    # 👑 upload_date=None — LLM이 transcript에서 추출한 실제 방송일 사용하도록
-    # (이전엔 today_str 을 전달 → 실행일이 broadcast_date 로 덮어씌워졌음).
-    # --fetch_latest 모드는 RSS pub_date(실제 업로드일)를 전달.
-    if args.video_id:
-        vids = [vid.strip() for vid in args.video_id.split(",") if vid.strip()]
-        for vid in vids:
-            video_targets.append((vid, args.source, None))
-            
-    # Mode B: Fetch latest uploaded videos from RSS feeds (요건 1)
-    if args.fetch_latest:
-        channels_to_query = {}
-        if args.channel_id:
-            # Custom channel ID list
-            cids = [cid.strip() for cid in args.channel_id.split(",") if cid.strip()]
-            for idx, cid in enumerate(cids, 1):
-                channels_to_query[f"Custom_Channel_{idx}"] = cid
-        else:
-            # 👑 [Ver 3.1] Load from configs/channels.json (with --tiers filter)
-            try:
-                if args.tiers == "all":
-                    tier_filter = None
-                else:
-                    tier_filter = [t.strip() for t in args.tiers.split(",") if t.strip()]
-                channels_to_query = load_channels(tier_filter=tier_filter)
-            except FileNotFoundError:
-                print("⚠️  configs/channels.json not found; falling back to DEFAULT_CHANNELS (7 channels).")
-                channels_to_query = DEFAULT_CHANNELS
-            
-        print(f"📡 Fetching latest RSS feeds from {len(channels_to_query)} channels (max age: {args.max_age_hours}h)...")
-        for source_name, channel_id in channels_to_query.items():
-            latest_vids_info = fetch_video_ids_from_channel(channel_id, max_age_hours=args.max_age_hours)
-            print(f"   - {source_name} ({channel_id}): Found {len(latest_vids_info)} latest videos.")
-            for vid, pub_date in latest_vids_info:
-                video_targets.append((vid, source_name, pub_date))
-
-    # De-duplicate targets while preserving order
-    seen = set()
-    unique_targets = []
-    for item in video_targets:
-        vid = item[0]
-        src = item[1]
-        pub_date = item[2] if len(item) > 2 else today_str
-        if vid not in seen:
-            seen.add(vid)
-            unique_targets.append((vid, src, pub_date))
+    unique_targets = collect_video_targets(args)
 
     # Backfill mode: jump to DB→MD export without requiring ingestion targets
     if args.backfill_from_db:
-        from src.exporter import _load_db_report_as_schema  # local helper
-        # 파일명 형식: {Speaker}_{YYYY-MM-DD}_{videoID}.md — 날짜 패턴 기준으로
-        # video_id 추출. 이전 rsplit("_",1)[-1] len==11 방식은 video_id 내부에
-        # `_` 포함 시(ib-XMy-d_2I) 누락→불필요 재백필+덮어쓰기 버그.
-        _id_re = re.compile(r"_(\d{4}-\d{2}-\d{2})_([A-Za-z0-9_-]{11})$")
-        existing_videos: set[str] = set()
-        for md_path in vault_dir_path.rglob("*.md"):
-            m = _id_re.search(md_path.stem)
-            if m:
-                existing_videos.add(m.group(2))
-
-        backfilled = 0
-        skipped = 0
-        backfill_failed = 0
-        for schema in _load_db_report_as_schema(str(db_file_path)):
-            vid = schema["metadata"]["video_id"]
-            if vid in existing_videos:
-                skipped += 1
-                continue
-            try:
-                md_path = obsidian_exporter.export_markdown(schema)
-                backfilled += 1
-                tqdm.write(f"   ✓ Backfilled: {md_path.name}")
-            except Exception as e:
-                backfill_failed += 1
-                tqdm.write(f"   ❌ Backfill failed for {vid}: {e}")
-        print("=" * 60)
-        print(f"🏁 Backfill done.  Exported: {backfilled}  Already-on-disk: {skipped}")
-        print("=" * 60)
-        return 1 if backfill_failed else 0
+        return run_backfill(
+            db_file_path, vault_dir_path, obsidian_exporter
+        )
 
     # Counters
     success_count = 0
