@@ -4,6 +4,8 @@ YouTube의 거시경제·금융 전문가 발언을 수집하고 LLM으로 구�
 
 파생 리포트(Daily/CIO/Telegram/Insight)의 현재 입력·출력·부작용 경계와 안전한 통합
 순서는 [DERIVED_PIPELINE_CONTRACTS.md](DERIVED_PIPELINE_CONTRACTS.md)를 참고하세요.
+13~17단계 구현 파동의 측정 결과와 다음 진입 조건은
+[REFACTORING_STABILIZATION_REPORT.md](REFACTORING_STABILIZATION_REPORT.md)에 정리했습니다.
 
 ## 실제 아키텍처
 
