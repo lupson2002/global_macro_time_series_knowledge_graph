@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-OpenAI-compatible client module for Global Macro Time-Series Knowledge Graph
-===================================================================
-Connects to NVIDIA NIM API via nvidia-api-proxy (http://localhost:8000),
-a FastAPI proxy that rotates 6 NVIDIA API keys via itertools.cycle.
-Default model: deepseek-ai/deepseek-v4-flash (NIM, 대형 컨텍스트).
+Structured extraction client for Global Macro Time-Series Knowledge Graph
+=======================================================================
+Builds and validates the macro extraction request. Generation is delegated to
+src.cloud_client: Ollama Cloud first, then an OpenAI-compatible NIM fallback.
+The NIM fallback model is deepseek-ai/deepseek-v4-flash by default.
 
 [Ver 3.1 Renamed]  Formerly src/gemini_client.py / class GeminiMacroClient.
-Class name and file name reflect the OpenAI-compatible client interface.
+Class name and file name are retained for compatibility.
 
 [Ver 4.6] 모델 교체 + 절삭 제거 (사용자 결정)
 - Tier 1 모델: meta/llama-3.1-70b-instruct → deepseek-ai/deepseek-v4-flash.
@@ -385,32 +385,21 @@ class LocalLLMClient:
         (`analyze_transcript` final call).
         """
         self._throttle()
-        kwargs = {
-            "model": self.model_name,
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-            "temperature": 0.1,
-        }
-        if response_format_json:
-            kwargs["response_format"] = {"type": "json_object"}
-        # 👑 max_tokens 실제 캡 — setdefault 는 caller 가 큰 값 전달 시 캡이 아님.
-        # min(...) 로 상한 강제(length 컷 방지). [Ver 4.4] 2048→4096 (증거 필드 추가로 출력 길이증).
-        kwargs["max_tokens"] = min(max_tokens, 4096) if max_tokens is not None else 4096
-        # 👑 [Ver 4.0] gemma-4-e4b default had thinking mode ON, which burned
-        # the entire max_tokens budget on internal reasoning. Now using
-        # deepseek-ai/deepseek-v4-flash via nvidia-api-proxy — no thinking mode,
-        # no extra_body needed.
+        # 👑 [Ollama 전환] NIM → cloud_client (Ollama Cloud 우선, NIM 폴백)
+        response_format = {"type": "json_object"} if response_format_json else None
+        max_tok = min(max_tokens, 4096) if max_tokens is not None else 4096
 
+        from src import cloud_client
         last_err: Exception | None = None
         for attempt in range(max_retries):
             try:
-                resp = self.client.chat.completions.create(**kwargs)
+                content = cloud_client.chat_completion(
+                    system=system, user=user, max_tokens=max_tok, temperature=0.1,
+                    nim_model=self.model_name, response_format=response_format,
+                )
                 self.last_call_time = time.time()
-                content = resp.choices[0].message.content or ""
                 if not content.strip():
-                    raise RuntimeError(f"Empty completion from {self.model_name} (finish_reason={resp.choices[0].finish_reason})")
+                    raise RuntimeError(f"Empty completion from {self.model_name}")
                 return content
             except Exception as e:
                 self.last_call_time = time.time()
@@ -435,18 +424,16 @@ class LocalLLMClient:
         source_channel: str = "Unknown_Channel",
         upload_date: str = None,
     ) -> dict:
-        """Send the transcript to deepseek-ai/deepseek-v4-flash via nvidia-api-proxy
-        and return a MacroViewSchema dict.
+        """Send the transcript through the shared LLM routing layer and return
+        a MacroViewSchema-compatible dict.
 
-        [Ver 4.6] 절삭 없이 transcript 전체를 single-shot 으로 전달
-        (deepseek-v4-flash 대형 컨텍스트 — Hybrid 절삭 제거).
+        transcript 전체를 절삭 없이 single-shot으로 전달한다.
         """
         if not transcript_text or not transcript_text.strip():
             raise ValueError("Empty transcript_text passed to analyze_transcript")
 
-        # ── Single-shot: transcript 전체를 절삭 없이 전달 ────────────────
         print(
-            f"   [LLM] transcript {len(transcript_text):,} chars → single-shot extraction"
+            f"   [LLM] transcript {len(transcript_text):,} chars → full single-shot extraction"
         )
         prompt = self._build_prompt(transcript_text, video_id, source_channel, upload_date)
         raw_json = self._chat(
@@ -537,8 +524,7 @@ class LocalLLMClient:
                         "Respond with ONLY a single valid JSON object — no markdown fences, "
                         "no prose before or after, no code blocks. Start with '{' and end with '}'.\n\n"
                     )
-                    # [Ver 4.6] 절삭 없이 원본 transcript 전체를 재주입
-                    # (deepseek-v4-flash 대형 컨텍스트 — retry 도 전체 사용).
+                    # Retry에서도 원본 transcript 전체를 재주입한다.
                     refeed_text = transcript_text if transcript_text else "(no transcript available)"
                     retry_prompt += self._build_prompt(
                         transcript_text=refeed_text,

@@ -4,7 +4,7 @@ market_narrative.py — Market Narrative Search Engine Report 코어 엔진 (신
 =====================================================================================
 6대 내러티브 쿼리(4대 진단 + 긍정/부정 시나리오)로 구루 실제 발언(verbatim_quote/core_thesis)을 RAG 검색하고,
 SQLite 정량 통계(의견 분열도 stddev, bull_bear 평균)와 결합해
-DeepSeek-v4-Pro(NIM, INSIGHT_MODEL)로 다음을 추론·추출한다:
+DeepSeek-v4-flash(NIM/Ollama, INSIGHT_MODEL — 2026-08-06 사용자 결정: pro→flash 통일)로 다음을 추론·추출한다:
   - 현재 시장을 지배하는 내러티브 (Dominant Narrative)
   - 시장 상승의 핵심 병목 (The Market's Bottleneck / Missing Catalyst)
   - 내러티브 성패를 가를 3x3 시나리오 (상승 호재 3 + 하락 파탄 3)
@@ -30,7 +30,6 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from dotenv import load_dotenv  # noqa: E402
-from openai import OpenAI  # noqa: E402
 
 load_dotenv()
 
@@ -170,7 +169,8 @@ def _timebox_where(use_timebox: bool) -> tuple[str, list]:
     if not use_timebox:
         return "1=1", []
     valid = valid_time_box_values()
-    empty = "(r.time_box IS NULL OR r.time_box = '') AND r.broadcast_date >= date('now','-90 days')"
+    # 👑 [2026-08-06 L4] date('now') 는 UTC — broadcast_date(KST) 와 1일 시차 보정.
+    empty = "(r.time_box IS NULL OR r.time_box = '') AND r.broadcast_date >= date('now','+9 hours','-90 days')"
     if not valid:
         return f"({empty})", []
     ph = ",".join("?" * len(valid))
@@ -260,32 +260,24 @@ def collect_rag_context(use_timebox: bool = True, top_k: int = DEFAULT_TOP_K) ->
 # 3) 내러티브 추론 (DeepSeek-v4-Pro) → 리포트 마크다운
 # ---------------------------------------------------------------------------
 def _call_llm_narrative(system: str, user: str, max_tokens: int = NARRATIVE_MAX_TOKENS) -> str:
-    """NIM(INSIGHT_MODEL) 호출 — 내러티브 보고서는 섹션 5(3x3)까지 분량이 커
+    """Ollama Cloud 우선/NIM 폴백 호출 — 내러티브 보고서는 섹션 5(3x3)까지 분량이 커
     `rag_insights._call_llm`(2048) 대신 max_tokens 상향 + retry/backoff 사용.
 
     기존 코드 수정 없이 market_narrative.py 전용 래퍼로 독립 실행.
     """
     import time
+    from src import cloud_client
 
-    client = OpenAI(base_url=NIM_BASE_URL, api_key=NIM_API_KEY, timeout=180.0)
     last_err: Exception | None = None
     for attempt in range(3):
         try:
-            resp = client.chat.completions.create(
-                model=INSIGHT_MODEL,
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user},
-                ],
-                temperature=0.3,
-                max_tokens=max_tokens,
+            # 👑 [Ollama 전환] cloud_client (Ollama Cloud 우선, NIM 폴백)
+            text = cloud_client.chat_completion(
+                system=system, user=user, max_tokens=max_tokens, temperature=0.3,
+                nim_model=INSIGHT_MODEL,
             )
-            content = resp.choices[0].message.content
-            if isinstance(content, list):
-                content = "".join(p.get("text", "") for p in content if isinstance(p, dict))
-            text = str(content or "")
             if not text.strip():
-                raise RuntimeError(f"NIM({INSIGHT_MODEL}) 빈 응답")
+                raise RuntimeError(f"Ollama/NIM({INSIGHT_MODEL}) 빈 응답")
             return text
         except Exception as e:  # noqa: BLE001
             last_err = e
@@ -293,11 +285,11 @@ def _call_llm_narrative(system: str, user: str, max_tokens: int = NARRATIVE_MAX_
                 sleep_s = 2.0 * (2 ** attempt)
                 print(f"   [WARN] 내러티브 추론 재시도 {attempt+1}: {e} — {sleep_s}s 대기")
                 time.sleep(sleep_s)
-    raise RuntimeError(f"NIM 내러티브 추론 실패(3회): {last_err}")
+    raise RuntimeError(f"내러티브 추론 실패(3회): {last_err}")
 
 
 def generate_narrative_report(use_timebox: bool = True, top_k: int = DEFAULT_TOP_K, no_llm: bool = False) -> str:
-    """4대 쿼리 RAG + 정량 통계 → NIM 추론 → 내러티브 리포트 마크다운 반환."""
+    """RAG + 정량 통계 → 공용 LLM 라우터 → 내러티브 리포트 마크다운 반환."""
     today = datetime.now().strftime("%Y-%m-%d")
 
     stats = collect_stats(use_timebox=use_timebox)
@@ -339,7 +331,7 @@ def generate_narrative_report(use_timebox: bool = True, top_k: int = DEFAULT_TOP
         "섹션 2(시장의 목마름/병목)와 섹션 5(3x3 시나리오)에 근거로 반영하세요."
     )
 
-    print(f"🤖 NIM({INSIGHT_MODEL}) 내러티브 추론 중...")
+    print(f"🤖 LLM(우선 Ollama, NIM 폴백: {INSIGHT_MODEL}) 내러티브 추론 중...")
     content = _call_llm_narrative(NARRATIVE_PROMPT.format(today_date=today), user)
     content = (content or "").strip()
     if not content:

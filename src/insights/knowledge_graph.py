@@ -133,12 +133,94 @@ def centralities(G: nx.Graph) -> dict[str, dict[str, float]]:
     }
 
 
-def render_pyvis(G: nx.Graph, node_comm: dict[str, int], out_path: Path | None = None) -> Path:
-    """pyvis 인터랙티브 HTML. 노드 크기=freq, 엣지 굵기=weight, 색=커뮤니티."""
+# ── 👑 [2026-08-07] 가독성 최적화: 정제(Pruning) + 중심성 + 커뮤니티 ──
+def prune_graph(G: nx.Graph, min_degree: int = 2, min_edge_weight: int = 2) -> nx.Graph:
+    """가변 필터로 그래프 정제 (레이아웃 단순화).
+    - min_edge_weight 미만 엣지 제거
+    - min_degree 미만 노드 제거 (고립 노드 + 1개 간선 리프 노드 기본 제거)
+    """
+    G2 = G.copy()
+    G2.remove_edges_from(
+        [(a, b) for a, b, d in G2.edges(data=True) if d.get("weight", 0) < min_edge_weight]
+    )
+    G2.remove_nodes_from([n for n, deg in dict(G2.degree()).items() if deg < min_degree])
+    return G2
+
+
+def compute_centralities(G: nx.Graph) -> dict[str, dict[str, float]]:
+    """PageRank + Betweenness 중심성 (가중 그래프)."""
+    return {
+        "pagerank": dict(nx.pagerank(G, weight="weight")),
+        "betweenness": dict(nx.betweenness_centrality(G, weight="weight")),
+    }
+
+
+def _scale_size(cent_val: float, freq: int, max_cent: float, min_s: int = 8, max_s: int = 40) -> float:
+    """중심성 정규화 → 노드 크기. max_cent<=0(빈 그래프)이면 freq 기반 폴백."""
+    if max_cent <= 0:
+        return min_s + min(freq * 1.5, max_s - min_s)
+    return min_s + (cent_val / max_cent) * (max_s - min_s)
+
+
+def build_visualization_graph(
+    G: nx.Graph, min_degree: int = 2, min_edge_weight: int = 2
+) -> tuple[nx.Graph, dict[str, int], dict[str, dict[str, float]]]:
+    """시각화용 정제 그래프 일괄 준비 → (G_pruned, node_comm, centralities)."""
+    Gp = prune_graph(G, min_degree=min_degree, min_edge_weight=min_edge_weight)
+    comm = detect_communities(Gp)
+    cent = compute_centralities(Gp)
+    return Gp, comm, cent
+
+
+def summarize_network(G: nx.Graph, node_comm: dict[str, int], top_k: int = 10) -> None:
+    """Top K 핵심 노드 + 커뮤니티 요약 콘솔 출력 (PageRank+Betweenness 복합 점수)."""
+    cent = compute_centralities(G)
+    pr, bt = cent["pagerank"], cent["betweenness"]
+    pr_max = max(pr.values()) if pr else 1.0
+    bt_max = max(bt.values()) if bt else 1.0
+    score = {n: (pr.get(n, 0) / pr_max) + (bt.get(n, 0) / bt_max) for n in G.nodes()}
+
+    print("\n" + "=" * 66)
+    print(f"🏆 Top {top_k} 핵심 노드 (PageRank + Betweenness 복합)")
+    print("=" * 66)
+    for i, (n, s) in enumerate(sorted(score.items(), key=lambda x: -x[1])[:top_k], 1):
+        print(f"{i:2d}. {n:<22} PR={pr.get(n,0):.4f} BT={bt.get(n,0):.4f} "
+              f"comm={node_comm.get(n,0)} type={G.nodes[n].get('type','')}")
+
+    groups: dict[int, list[str]] = {}
+    for n, c in node_comm.items():
+        groups.setdefault(c, []).append(n)
+    print("\n" + "=" * 66)
+    print(f"🗂️ 커뮤니티 요약 ({len(groups)}개)")
+    print("=" * 66)
+    for c, members in sorted(groups.items(), key=lambda x: -len(x[1])):
+        top = sorted(members, key=lambda n: score.get(n, 0), reverse=True)[:3]
+        print(f"  커뮤니티 {c}: {len(members):3d} 노드 | 대표: {', '.join(top)}")
+    print()
+
+
+def render_pyvis(
+    G: nx.Graph,
+    node_comm: dict[str, int],
+    cent: dict[str, dict[str, float]] | None = None,
+    out_path: Path | None = None,
+) -> Path:
+    """pyvis 인터랙티브 2D — 가독성 최적화.
+    - 노드 크기 = PageRank 중심성 비례 (동적 스케일링)
+    - 색 = Louvain 커뮤니티 팔레트
+    - Ego-Network 하이라이트 (클릭 → 1/2차 이웃만 강조, 나머지 반투명)
+    - 노드 검색 + 커뮤니티 필터 드롭다운
+    - forceAtlas2Based 안정화 완료 후 physics off (진동 방지)
+    """
     from pyvis.network import Network
 
     VAULT_INSIGHTS.mkdir(parents=True, exist_ok=True)
     out = out_path or (VAULT_INSIGHTS / "knowledge_graph.html")
+
+    if cent is None:
+        cent = compute_centralities(G)
+    pr = cent.get("pagerank", {})
+    pr_max = max(pr.values()) if pr else 0.0
 
     net = Network(height="750px", width="100%", notebook=False, bgcolor="#ffffff")
     palette = ["#0969da", "#cf222e", "#1a7f37", "#bf8700", "#8250df", "#1f6feb", "#a371f7"]
@@ -146,12 +228,121 @@ def render_pyvis(G: nx.Graph, node_comm: dict[str, int], out_path: Path | None =
     for n, d in G.nodes(data=True):
         comm = node_comm.get(n, 0)
         color = palette[comm % len(palette)]
-        size = 10 + min(d.get("freq", 1) * 2, 40)
-        net.add_node(n, label=n, size=size, color=color, title=f"{d.get('type','')} · freq={d.get('freq',1)} · comm={comm}")
+        size = _scale_size(pr.get(n, 0), d.get("freq", 1), pr_max)
+        net.add_node(n, label=n, size=size, color=color, comm=comm,
+                     title=f"{d.get('type','')} · freq={d.get('freq',1)} · comm={comm} · PR={pr.get(n,0):.4f}")
     for a, b, d in G.edges(data=True):
         net.add_edge(a, b, value=d.get("weight", 1), width=min(d.get("weight", 1) * 0.5, 5))
+
+    # 👑 [2026-08-07] 진동/겹침 방지 options — forceAtlas2Based + continuous smooth
+    net.options = {
+        "configure": {"enabled": False},
+        "edges": {
+            "color": {"inherit": True},
+            "smooth": {"enabled": True, "type": "continuous"},
+        },
+        "interaction": {"dragNodes": True},
+        "physics": {
+            "enabled": True,
+            "solver": "forceAtlas2Based",
+            "forceAtlas2Based": {
+                "gravitationalConstant": -50,
+                "centralGravity": 0.01,
+                "springLength": 100,
+                "springConstant": 0.08,
+                "damping": 0.4,
+                "avoidOverlap": 1,
+            },
+            "stabilization": {"iterations": 2000},
+        },
+    }
     net.write_html(str(out), notebook=False)
+    # 인터랙티브 JS 주입 (Ego-Network + 검색 + 커뮤니티 필터)
+    # 주의: pyvis 자체 템플릿이 stabilizationIterationsDone 핸들러를 이미 포함하므로
+    # 중복 주입 방지 마커는 내 스크립트 고유 문자열(getConnectedNodes)로 판별.
+    html = out.read_text(encoding="utf-8")
+    if "getConnectedNodes" not in html:
+        html = html.replace("</body>", _build_pyvis_interactive_script())
+        out.write_text(html, encoding="utf-8")
     return out
+
+
+def _build_pyvis_interactive_script() -> str:
+    """pyvis HTML에 주입할 인터랙티브 JS — Ego-Network 하이라이트 + 검색 + 커뮤니티 필터 + 안정화 후 정지."""
+    return """<script type="text/javascript">
+(function() {
+  var container = document.getElementById("mynetwork");
+  container.style.position = "relative";
+
+  // ── 1. Ego-Network 하이라이트 (클릭 → 1/2차 이웃만 강조, 나머지 반투명) ──
+  network.on("click", function(params) {
+    if (!params.nodes.length) {
+      nodes.update(nodes.get().map(function(n) { return {id: n.id, opacity: 1}; }));
+      edges.update(edges.get().map(function(e) { return {id: e.id, opacity: 1}; }));
+      return;
+    }
+    var clicked = params.nodes[0];
+    var nbrs = new Set([clicked]);
+    var adj = network.getConnectedNodes(clicked);
+    adj.forEach(function(n) { nbrs.add(n); });
+    adj.forEach(function(n) {
+      network.getConnectedNodes(n).forEach(function(n2) { nbrs.add(n2); });
+    });
+    nodes.update(nodes.get().map(function(n) {
+      return {id: n.id, opacity: nbrs.has(n.id) ? 1 : 0.12};
+    }));
+    edges.update(edges.get().map(function(e) {
+      return {id: e.id, opacity: (nbrs.has(e.from) && nbrs.has(e.to)) ? 1 : 0.08};
+    }));
+  });
+
+  // ── 2. 노드 검색 ──
+  var search = document.createElement("input");
+  search.type = "text";
+  search.placeholder = "🔍 노드 검색";
+  search.style.cssText = "position:absolute;top:12px;left:12px;z-index:10;padding:8px 10px;width:200px;border:1px solid #ccc;border-radius:6px;font-size:13px;";
+  container.appendChild(search);
+  search.addEventListener("keyup", function() {
+    var q = search.value.trim().toLowerCase();
+    if (!q) { network.selectNodes([]); return; }
+    var hits = nodes.get().filter(function(n) { return String(n.label).toLowerCase().indexOf(q) !== -1; });
+    var ids = hits.map(function(n) { return n.id; });
+    network.selectNodes(ids);
+    if (ids.length) network.focus(ids[0], {scale: 1.3, animation: {duration: 500}});
+  });
+
+  // ── 3. 커뮤니티 필터 드롭다운 ──
+  var sel = document.createElement("select");
+  sel.style.cssText = "position:absolute;top:12px;right:12px;z-index:10;padding:8px;border:1px solid #ccc;border-radius:6px;font-size:13px;";
+  var all = document.createElement("option");
+  all.value = "all"; all.text = "전체 커뮤니티";
+  sel.appendChild(all);
+  var comms = {};
+  nodes.get().forEach(function(n) { comms[n.comm] = true; });
+  Object.keys(comms).sort().forEach(function(c) {
+    var opt = document.createElement("option");
+    opt.value = c; opt.text = "커뮤니티 " + c;
+    sel.appendChild(opt);
+  });
+  container.appendChild(sel);
+  sel.addEventListener("change", function() {
+    var c = sel.value;
+    nodes.update(nodes.get().map(function(n) {
+      return {id: n.id, hidden: (c !== "all" && String(n.comm) !== c)};
+    }));
+    edges.update(edges.get().map(function(e) {
+      var f = nodes.get(e.from), t = nodes.get(e.to);
+      return {id: e.id, hidden: (c !== "all" && (String(f.comm) !== c || String(t.comm) !== c))};
+    }));
+  });
+
+  // ── 4. 안정화 완료 후 물리 엔진 off (진동 방지) ──
+  network.once("stabilizationIterationsDone", function() {
+    network.setOptions({ physics: false });
+  });
+})();
+</script>
+</body>"""
 
 
 def _build_dashboard_fig(matrices: dict, G: nx.Graph, node_comm: dict[str, int]):
@@ -190,6 +381,125 @@ def render_plotly_dashboard(matrices: dict, G: nx.Graph, node_comm: dict[str, in
     return out
 
 
+def render_force_graph_3d(
+    G: nx.Graph,
+    node_comm: dict[str, int],
+    cent: dict[str, dict[str, float]] | None = None,
+    out_path: Path | None = None,
+) -> Path:
+    """👑 [2026-08-07] 지식그래프 3D — WebGL 3d-force-graph CDN (대용량 엣지 렌더링 성능).
+    plotly scatter3d 대체. 노드 크기=PageRank, 색=커뮤니티, 엣지 굵기=weight.
+    Ego-Network 하이라이트 + 검색 + 커뮤니티 필터 포함."""
+    import json
+
+    VAULT_INSIGHTS.mkdir(parents=True, exist_ok=True)
+    out = out_path or (VAULT_INSIGHTS / "knowledge_graph_3d.html")
+
+    if cent is None:
+        cent = compute_centralities(G)
+    pr = cent.get("pagerank", {})
+    pr_max = max(pr.values()) if pr else 0.0
+    palette = ["#0969da", "#cf222e", "#1a7f37", "#bf8700", "#8250df", "#1f6feb", "#a371f7"]
+
+    nodes = []
+    for n, d in G.nodes(data=True):
+        c = node_comm.get(n, 0)
+        nodes.append({
+            "id": n, "label": n, "type": d.get("type", ""), "comm": c,
+            "color": palette[c % len(palette)],
+            "size": 1 + 5 * (pr.get(n, 0) / pr_max) if pr_max > 0 else 2,
+            "freq": d.get("freq", 1),
+        })
+    links = [{"source": a, "target": b, "weight": d.get("weight", 1)}
+             for a, b, d in G.edges(data=True)]
+
+    data_json = json.dumps({"nodes": nodes, "links": links}, ensure_ascii=False)
+    html = _FORCE_GRAPH_TEMPLATE.replace("__DATA_JSON__", data_json)
+    out.write_text(html, encoding="utf-8")
+    return out
+
+
+_FORCE_GRAPH_TEMPLATE = """<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>지식그래프 3D (3d-force-graph)</title>
+<style>
+  body { margin: 0; overflow: hidden; font-family: -apple-system, sans-serif; }
+  #graph { width: 100vw; height: 100vh; }
+  .ctrl { position: absolute; z-index: 10; padding: 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 13px; background: #fff; }
+</style>
+</head>
+<body>
+<div id="graph"></div>
+<script src="https://unpkg.com/3d-force-graph"></script>
+<script>
+const data = __DATA_JSON__;
+// 주의: UMD 글로벌은 ForceGraph3D (ForceGraph 아님) — 잘못 쓰면 ReferenceError로 렌더링 안 됨
+const Graph = ForceGraph3D()(document.getElementById('graph'))
+  .graphData(data)
+  .nodeId('id')
+  .nodeLabel(n => `${n.label} · ${n.type} · freq=${n.freq} · comm=${n.comm}`)
+  .nodeColor(n => n.color)
+  .nodeVal(n => n.size)
+  .linkWidth(l => Math.sqrt(l.weight))
+  .linkColor(() => 'rgba(120,120,120,0.35)')
+  .linkOpacity(0.4)
+  .backgroundColor('#ffffff');
+// 레이아웃 후 전체 자동 프레이밍 (카메라가 그래프를 비추도록)
+setTimeout(() => Graph.zoomToFit(800), 1800);
+
+// ── 1. Ego-Network 하이라이트 (클릭 → 1/2차 이웃만 강조, 나머지 반투명) ──
+Graph.onNodeClick(node => {
+  if (!node) return;
+  const nbrs = new Set([node.id]);
+  const adj = data.links.filter(l => l.source.id === node.id || l.target.id === node.id)
+    .map(l => l.source.id === node.id ? l.target.id : l.source.id);
+  adj.forEach(id => nbrs.add(id));
+  adj.forEach(id => {
+    data.links.filter(l => l.source.id === id || l.target.id === id)
+      .forEach(l => nbrs.add(l.source.id === id ? l.target.id : l.source.id));
+  });
+  Graph.nodeOpacity(n => nbrs.has(n.id) ? 1 : 0.12)
+       .linkOpacity(l => (nbrs.has(l.source.id) && nbrs.has(l.target.id)) ? 0.8 : 0.05);
+});
+
+// ── 2. 노드 검색 ──
+const search = document.createElement('input');
+search.type = 'text';
+search.placeholder = '🔍 노드 검색';
+search.className = 'ctrl';
+search.style.cssText = 'top:12px;left:12px;width:200px;';
+document.body.appendChild(search);
+search.addEventListener('keyup', () => {
+  const q = search.value.trim().toLowerCase();
+  if (!q) return;
+  const hit = data.nodes.find(n => n.label.toLowerCase().includes(q));
+  if (hit) Graph.centerObject(hit, 1000);
+});
+
+// ── 3. 커뮤니티 필터 드롭다운 ──
+const sel = document.createElement('select');
+sel.className = 'ctrl';
+sel.style.cssText = 'top:12px;right:12px;';
+const all = document.createElement('option');
+all.value = 'all'; all.text = '전체 커뮤니티';
+sel.appendChild(all);
+[...new Set(data.nodes.map(n => n.comm))].sort().forEach(c => {
+  const opt = document.createElement('option');
+  opt.value = c; opt.text = '커뮤니티 ' + c;
+  sel.appendChild(opt);
+});
+document.body.appendChild(sel);
+sel.addEventListener('change', () => {
+  const c = sel.value;
+  Graph.nodeVisibility(n => c === 'all' || String(n.comm) === c);
+});
+</script>
+</body>
+</html>"""
+
+
 def render_plotly_png(matrices: dict, G: nx.Graph, node_comm: dict[str, int], out_path: Path | None = None) -> Path:
     """대시보드 PNG (이메일 inline 이미지용). kaleido 필요."""
     VAULT_INSIGHTS.mkdir(parents=True, exist_ok=True)
@@ -202,9 +512,12 @@ def render_plotly_png(matrices: dict, G: nx.Graph, node_comm: dict[str, int], ou
 
 if __name__ == "__main__":
     G = build_cooccurrence_graph()
-    comm = detect_communities(G)
-    print(f"노드 {G.number_of_nodes()} 엣지 {G.number_of_edges()} 커뮤니티 {len(set(comm.values()))}")
-    deg = sorted(dict(nx.degree_centrality(G)).items(), key=lambda x: -x[1])[:10]
-    print("중심성 상위:", deg)
-    out = render_pyvis(G, comm)
+    Gp, comm, cent = build_visualization_graph(G)
+    print(f"정제 전: 노드 {G.number_of_nodes()} 엣지 {G.number_of_edges()} → "
+          f"정제 후: 노드 {Gp.number_of_nodes()} 엣지 {Gp.number_of_edges()} "
+          f"커뮤니티 {len(set(comm.values()))}")
+    summarize_network(Gp, comm)
+    out = render_pyvis(Gp, comm, cent)
     print("pyvis:", out)
+    out3d = render_force_graph_3d(Gp, comm, cent)
+    print("3D:", out3d)

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Ver 4.0 — Embedding Provider for TurboVec Indexing
+Embedding Provider for LanceDB Indexing
 ==================================================
 Pluggable embedding backend for `core_thesis` → fixed-dim float32 vectors.
 

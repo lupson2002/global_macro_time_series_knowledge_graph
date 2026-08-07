@@ -27,18 +27,19 @@ import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
-from openai import OpenAI
 
 load_dotenv()
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
+if str(PROJECT_DIR) not in sys.path:
+    sys.path.insert(0, str(PROJECT_DIR))  # src.llm_router 등 src.* import 용
 DB_PATH = PROJECT_DIR / "data" / "macro_knowledge.db"
 DAILY_DIR = PROJECT_DIR / "obsidian_vault" / "Daily_Reports"
 DRAFT_PATH = PROJECT_DIR / "tistory_draft.md"
 
 NIM_BASE_URL = os.environ.get("NIM_BASE_URL", "http://localhost:8000")
 NIM_API_KEY = os.environ.get("NIM_API_KEY", "proxy-rotates-keys")
-BLOG_MODEL = os.environ.get("BLOG_MODEL", os.environ.get("TIER2_MODEL", "qwen/qwen3-next-80b-a3b-instruct"))
+# 👑 [2026-08-06 L3] 미사용 BLOG_MODEL(정의만, EOL qwen3-next 기본값) 제거.
 BLOG_TIMEOUT = float(os.environ.get("BLOG_TIMEOUT", "180.0"))
 
 
@@ -182,8 +183,9 @@ BLOG_SYSTEM_PROMPT = """당신은 글로벌 매크로 투자 전문 기자이자
 
 
 def llm_article(narrative: str, evidence: str, theme: str | None) -> str:
-    """NIM 으로 기사 산문 생성. 반환: '# 제목\\n본문'."""
-    client = OpenAI(base_url=NIM_BASE_URL, api_key=NIM_API_KEY, timeout=BLOG_TIMEOUT)
+    """멀티 프로바이더 라우터로 기사 산문 생성. 반환: '# 제목\\n본문'."""
+    from src.llm_router import Llama70BRouter
+    router = Llama70BRouter()
     theme_hint = f" 주제 필터: {theme}." if theme else ""
     user = (
         f"아래는 최근 매크로 Daily 내러티브와 구루 증거 블록이다.{theme_hint}\n"
@@ -192,15 +194,9 @@ def llm_article(narrative: str, evidence: str, theme: str | None) -> str:
         f"=== 증거 블록(직접 인용·수치·출처) ===\n{evidence}\n\n"
         f"기사 원고를 작성. 첫 줄은 반드시 `# 제목`."
     )
-    print(f"🤖 블로그 원고 생성 via NIM ({BLOG_MODEL})...")
-    resp = client.chat.completions.create(
-        model=BLOG_MODEL,
-        messages=[{"role": "system", "content": BLOG_SYSTEM_PROMPT},
-                  {"role": "user", "content": user}],
-        temperature=0.3,
-        max_tokens=4096,
-    )
-    out = (resp.choices[0].message.content or "").strip()
+    print(f"🤖 블로그 원고 생성 via Llama70BRouter (Cerebras/Groq, NIM 폴백)...")
+    out = router.generate(system=BLOG_SYSTEM_PROMPT, user=user, max_tokens=4096, temperature=0.3)
+    out = (out or "").strip()
     if not out.startswith("#"):
         out = "# " + out  # 제목 보정
     # 👑 블로그 발행용 — Obsidian 백링크 [[X]] → X 로 strip(규칙 #5).

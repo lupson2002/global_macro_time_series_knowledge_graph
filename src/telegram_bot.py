@@ -232,7 +232,7 @@ def tool_specs_openai() -> list[dict]:
             "type": "function",
             "function": {
                 "name": "get_vect_index_status",
-                "description": "TurboVec index diagnostics (dim, bit width, file size, vector count, embedding backend).",
+                "description": "LanceDB index diagnostics (vector count, dimension and embedding backend).",
                 "parameters": {"type": "object", "properties": {}},
             },
         },
@@ -367,19 +367,6 @@ async def call_ollama_with_tools(user_message: str) -> str:
         return "⚠️ Tool-calling loop exceeded `MAX_TOOL_ITER` without a final answer."
 
 
-# ---------------------------------------------------------------------------
-# Markdown-safe Telegram send (Telegram is strict about _ * ` [ in markdown)
-# ---------------------------------------------------------------------------
-def _escape_md(text: str) -> str:
-    """Telegram MarkdownV2 sanitize 자리표시.
-
-    👑 [A23] 실제로는 plain-mode 전송(send_chunked 가 MARKDOWN 시도 후 실패 시
-    plain 폴백)하므로 no-op 의도. MarkdownV2 전환 시 _*/`[ 등 이스케이프 구현
-    필요(현재는 미사용 — plain 모드로 일관성 유지).
-    """
-    return text
-
-
 def _chunk_lines(text: str, max_len: int) -> list:
     """라인 경계 분할 — 코드펜스/굵게/링크 중간 절단 방지. 단일 라인이
     max_len 초과 시 강제 분할(이전 문자 단위 절단은 마크다운 파싱 실패 유발)."""
@@ -423,7 +410,7 @@ async def send_chunked(update: Update, text: str):
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "👋 글로벌 매크로 지식 그래프 에이전트 (Ver 4.0)\n\n"
-        "매크로/금융 질문을 자유롭게 보내주세요. 로컬 TurboVec 인덱스에서 "
+        "매크로/금융 질문을 자유롭게 보내주세요. 로컬 LanceDB 인덱스에서 "
         "관련 구루 의견을 즉시 검색한 뒤 Ollama Pro가 종합 답변을 작성합니다.\n\n"
         "예: `AI capex 2026에 대한 전문가 의견은?`\n"
         "예: `현재 contrarian view 3개만 보여줘`\n"
@@ -436,7 +423,7 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     pipeline = await dispatch_tool("get_pipeline_status", {})
     vector = await dispatch_tool("get_vect_index_status", {})
     await update.message.reply_text(
-        f"*Pipeline Status*\n```\n{pipeline}\n```\n\n*TurboVec Index*\n```\n{vector}\n```",
+        f"*Pipeline Status*\n```\n{pipeline}\n```\n\n*LanceDB Index*\n```\n{vector}\n```",
         parse_mode=ParseMode.MARKDOWN,
     )
 

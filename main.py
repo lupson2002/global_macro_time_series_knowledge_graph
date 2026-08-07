@@ -78,8 +78,12 @@ DEFAULT_CHANNELS = {
     "Yahoo_Finance": "UCxZG-dvg0cLQsgCln7DBHKw",
 }
 
-def check_processed(db_path: str, video_id: str) -> bool:
-    """Helper to check if a video_id is already successfully processed in SQLite.
+def check_processed(db_path: str, video_id: str, include_skipped: bool = True) -> bool:
+    """Helper to check if a video_id is already processed in SQLite.
+
+    reports(성공) 또는 skipped_videos(게이트키퍼 스킵) 에 존재하면 True.
+    👑 [2026-08-06 H2] 스킵 영상도 영속화되어 다음 크론에서 재수집+재LLM 방지.
+    reports 를 우선 조회 — 스킵 후 재처리 성공 시에도 정상 판정.
 
     `with sqlite3.connect(...)` 로 연결을 컨텍스트 매니저가 관리 — 예외 시에도
     close 보장(이전 try/except 가 conn.close() 를 감싸지 않아 누수 가능했음).
@@ -90,8 +94,15 @@ def check_processed(db_path: str, video_id: str) -> bool:
         with sqlite3.connect(db_path) as conn:
             cur = conn.cursor()
             cur.execute("SELECT 1 FROM reports WHERE video_id = ?", (video_id,))
-            return cur.fetchone() is not None
+            if cur.fetchone() is not None:
+                return True
+            if include_skipped:
+                cur.execute("SELECT 1 FROM skipped_videos WHERE video_id = ?", (video_id,))
+                return cur.fetchone() is not None
+            return False
     except Exception:
+        # skipped_videos 테이블 미존재(구DB) 시 include_skipped 조회 실패 → 전체 False
+        # (보수적: 재수집 허용, 크래시 없음)
         return False
 
 
@@ -167,9 +178,7 @@ def main():
     print(f"   Overwrite:  {args.overwrite}")
     print("=" * 60)
 
-    # Tier 1 (local_llm_client) uses nvidia-api-proxy which rotates its own keys.
-    # GEMINI_API_KEY is for Tier 2 (report_generator.py, separate from this path).
-    # No api_key needed here — the proxy overrides Authorization per call.
+    # Tier 1 delegates to cloud_client: Ollama Cloud first, NIM proxy fallback.
 
     # Initialize Clients
     try:
@@ -274,7 +283,9 @@ def main():
         tqdm.write(f"⚙️  --max_videos={args.max_videos}: processing first {args.max_videos} of {len(unique_targets)}")
         unique_targets = unique_targets[:args.max_videos]
 
-    pbar = tqdm(unique_targets, desc="Processing Pipeline")
+    # 👑 [2026-08-06 M3] cron(비-TTY)에서 tqdm 진행바 비활성 — \r 진행선이
+    # 2>&1 로그에 매 틱마다 새 줄로 기록되어 pipeline_cron.log ~1MB/일 폭증.
+    pbar = tqdm(unique_targets, desc="Processing Pipeline", disable=not sys.stderr.isatty())
     for video_id, source_channel, upload_date in pbar:
         pbar.set_postfix_str(f"Success: {success_count} | Skip: {skip_count} | Fail: {fail_count}")
 
@@ -309,18 +320,17 @@ def main():
                 break
             continue
 
-        # 2. LLM Analysis (Ver 4.6: deepseek-v4-flash via NIM proxy; delay configurable, default 0)
+        # 2. LLM Analysis (Ollama Cloud primary, NIM proxy fallback)
         try:
             if args.llm_delay > 0 and (success_count + fail_count) > 0:
                 tqdm.write(f"   ⏳ LLM delay: {args.llm_delay}s...")
                 time.sleep(args.llm_delay)
-            tqdm.write(f"   🤖 Generating structured macroeconomic view via {client.model_name} (NIM proxy)...")
+            tqdm.write(f"   🤖 Generating structured macroeconomic view (NIM fallback: {client.model_name})...")
             extracted_data = client.analyze_transcript(transcript, video_id, source_channel=source_channel, upload_date=upload_date)
             tqdm.write("   ✓ Structured JSON generated successfully.")
         except Exception as e:
-            import traceback as _tb
-            tqdm.write(f"   ❌ LLM Analysis failed: {e}")
-            tqdm.write(f"   [TRACEBACK]\n{_tb.format_exc()}")
+            # 👑 [2026-08-06 M3] 전체 traceback(수십 줄) 로그 제거 → 단축(예외 타입+메시지).
+            tqdm.write(f"   ❌ LLM Analysis failed: {type(e).__name__}: {e}")
             fail_count += 1
             continue
 
@@ -328,6 +338,11 @@ def main():
         try:
             if not is_macro_relevant(extracted_data):
                 tqdm.write(f"   ⏭️ [SKIP] 매크로 가치 없는 영상(홍보/소음): {video_id}")
+                # 👑 [2026-08-06 H2] 스킵 영상 영속화 → 다음 크론 재수집 방지 (멱등화).
+                try:
+                    sqlite_exporter.mark_skipped(video_id, reason="not_macro_relevant")
+                except Exception:
+                    pass
                 skip_count += 1
                 continue
             tqdm.write("   💾 Exporting to SQLite DB and Obsidian Markdown...")

@@ -9,18 +9,16 @@ import os
 import json
 
 from dotenv import load_dotenv
-from openai import OpenAI
 
 load_dotenv()
 
 NIM_BASE_URL = os.environ.get("NIM_BASE_URL", "http://localhost:8000")
 NIM_API_KEY = os.environ.get("NIM_API_KEY", "proxy-rotates-keys")
-# 👑 인사이트 LLM = deepseek-v4-pro (주간 추론 — morning/Tier2-flash 와 분리).
-# morning(report_generator)은 TIER2_MODEL=deepseek-v4-flash(가벼움)를 쓰지만,
-# insight는 정성 추론이 필요해 deepseek-v4-pro 고정. INSIGHT_MODEL>TIER3_MODEL>기본값 순.
+# 2026-08-06 사용자 결정: insight/주간 추론도 flash 로 통일(pro→flash 다운그레이드 승인).
+# INSIGHT_MODEL > TIER3_MODEL > 기본값 순. .env 로 오버라이드 가능.
 INSIGHT_MODEL = os.environ.get(
     "INSIGHT_MODEL",
-    os.environ.get("TIER3_MODEL", "deepseek-ai/deepseek-v4-pro"),
+    os.environ.get("TIER3_MODEL", "deepseek-ai/deepseek-v4-flash"),
 )
 TIER2_TIMEOUT = float(os.environ.get("TIER2_TIMEOUT", "300.0"))
 
@@ -119,17 +117,11 @@ def search_macro_sync(query: str, top_k: int = 10, use_timebox: bool = True) -> 
 
 
 def _call_llm(system: str, user: str) -> str:
-    client = OpenAI(base_url=NIM_BASE_URL, api_key=NIM_API_KEY, timeout=TIER2_TIMEOUT)
-    resp = client.chat.completions.create(
-        model=INSIGHT_MODEL,
-        messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-        temperature=0.3,
-        max_tokens=2048,
+    """👑 [Ollama 전환] cloud_client (Ollama Cloud 우선, NIM 폴백)."""
+    from src import cloud_client
+    return cloud_client.chat_completion(
+        system=system, user=user, max_tokens=2048, temperature=0.3, nim_model=INSIGHT_MODEL,
     )
-    content = resp.choices[0].message.content
-    if isinstance(content, list):
-        content = "".join(p.get("text", "") for p in content if isinstance(p, dict))
-    return str(content or "")
 
 
 SYSTEM_PROMPT = """당신은 글로벌 매크로 퀀트 큐레이터. 제공된 구루들의 발언(views)과 정량 신호(bull_bear, conviction, contrarian)를 종합해 **한국어 인사이트**를 도출.

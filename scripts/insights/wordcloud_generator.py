@@ -112,7 +112,9 @@ def get_period_keywords(days: int = 1) -> dict:
             nodes_by_vid.setdefault(n["video_id"], set()).add(phrase)
 
     data: dict[str, dict] = {}
-    _TOK = re.compile(r"[a-zA-Z]+")
+    # 👑 [2026-08-06 L1] 한글 전사본의 핵심 키워드가 워드클라우드에서 누락되던
+    # 문제 — 영문 전용 토크나이저를 한글(가-힣)+영문 포함으로 확장.
+    _TOK = re.compile(r"[가-힣a-zA-Z]+")
 
     def _add(word: str, score) -> None:
         d = data.setdefault(word, {"count": 0, "sum": 0.0, "scored": 0})

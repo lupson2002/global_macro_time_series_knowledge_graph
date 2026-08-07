@@ -135,6 +135,16 @@ class SQLiteExporter:
             )
         """)
 
+        # 👑 [2026-08-06 H2] 게이트키퍼로 스킵된 영상 영속화 — 6시간 크론마다
+        # 동일 영상 재다운로드+재LLM 호출 방지 (멱등화).
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS skipped_videos (
+                video_id TEXT PRIMARY KEY,
+                reason TEXT,
+                skipped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
         # Create helper indexes
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_nodes_video ON nodes(video_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_reports_speaker ON reports(speaker_name)")
@@ -144,6 +154,21 @@ class SQLiteExporter:
 
         conn.commit()
         conn.close()
+
+    def mark_skipped(self, video_id: str, reason: str = "not_macro_relevant"):
+        """👑 [2026-08-06 H2] 게이트키퍼 스킵 영상을 영속화 — 다음 크론에서 재수집 방지."""
+        conn = sqlite3.connect(self.db_path)
+        try:
+            with conn:
+                conn.execute(
+                    "INSERT OR REPLACE INTO skipped_videos (video_id, reason) VALUES (?, ?)",
+                    (video_id, reason),
+                )
+        except sqlite3.OperationalError:
+            # 구DB에 테이블 미존재 시 안전 무시 (재수집되지만 크래시는 없음)
+            pass
+        finally:
+            conn.close()
 
     def export_data(self, data: dict):
         """Inserts or replaces the extracted view data into SQLite tables."""
@@ -181,10 +206,32 @@ class SQLiteExporter:
             causal_json = json.dumps(causal, ensure_ascii=False) if isinstance(causal, list) else "[]"
             tracking_json = json.dumps(tracking, ensure_ascii=False) if isinstance(tracking, list) else "[]"
             tactical_json = json.dumps(tactical, ensure_ascii=False) if isinstance(tactical, list) else "[]"
+            # 👑 [2026-08-06 H3] INSERT OR REPLACE → ON CONFLICT DO UPDATE:
+            # OR REPLACE 는 행 삭제 후 재삽입이라 created_at(CURRENT_TIMESTAMP)이
+            # "지금"으로 리셋 → 백필 시 과거 영상이 24h 보고서에 오염. created_at 은
+            # UPDATE 목록에서 제외해 최초 수집 시각 보존.
             cursor.execute("""
-                INSERT OR REPLACE INTO reports
+                INSERT INTO reports
                 (video_id, speaker_name, speaker_role, source_channel, broadcast_date, time_box, core_thesis, verbatim_quote, conditional_catalysts, invalidation_risks, key_data_points, additional_quotes, price_targets, speaker_institution, expectation_gap, causal_chain, tracking_indicators, tactical_stance)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(video_id) DO UPDATE SET
+                    speaker_name = excluded.speaker_name,
+                    speaker_role = excluded.speaker_role,
+                    source_channel = excluded.source_channel,
+                    broadcast_date = excluded.broadcast_date,
+                    time_box = excluded.time_box,
+                    core_thesis = excluded.core_thesis,
+                    verbatim_quote = excluded.verbatim_quote,
+                    conditional_catalysts = excluded.conditional_catalysts,
+                    invalidation_risks = excluded.invalidation_risks,
+                    key_data_points = excluded.key_data_points,
+                    additional_quotes = excluded.additional_quotes,
+                    price_targets = excluded.price_targets,
+                    speaker_institution = excluded.speaker_institution,
+                    expectation_gap = excluded.expectation_gap,
+                    causal_chain = excluded.causal_chain,
+                    tracking_indicators = excluded.tracking_indicators,
+                    tactical_stance = excluded.tactical_stance
             """, (
                 video_id,
                 metadata.get("speaker_name"),

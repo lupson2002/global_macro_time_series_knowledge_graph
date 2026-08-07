@@ -41,7 +41,11 @@ async def query_db_async(query: str, params: tuple = ()) -> List[Dict[str, Any]]
     
     results = []
     # Force URI=True and read-only mode to prevent any modification attempts
+    # 👑 [2026-08-06 M2] busy_timeout — 쓰기 트랜잭션(WAL checkpoint)과 충돌 시
+    # 즉시 실패 대신 10s 대기. query_only 는 mode=ro 와 중복되는 belt-and-suspenders.
     async with aiosqlite.connect(DB_URI, uri=True) as db:
+        await db.execute("PRAGMA busy_timeout=10000")
+        await db.execute("PRAGMA query_only=ON")
         db.row_factory = aiosqlite.Row
         async with db.execute(query, params) as cursor:
             async for row in cursor:
@@ -284,6 +288,20 @@ async def run_macro_query(sql_query: str) -> str:
             f"(got '{first_kw or 'empty'}'). Read-only queries only — "
             f"ATTACH/PRAGMA/INSERT/UPDATE/DELETE/etc are blocked."
         )
+
+    # 👑 [2026-08-06 M2] 재귀 CTE DoS 차단 — WITH RECURSIVE 는 SQLite 가 종료
+    # 기준을 보장할 수 없어 수 분간 CPU 를 소모(텔레그램 tool-calling 경로 노출,
+    # 봇 응답 마비). 명시적 거부.
+    if re.search(r"\bWITH\s+RECURSIVE\b", cleaned, re.IGNORECASE):
+        return (
+            f"Rejected: WITH RECURSIVE (recursive CTE) is blocked — unbounded "
+            f"iteration can stall the bot. Use plain SELECT or non-recursive WITH."
+        )
+
+    # 결과 LIMIT 캡 — 대량 반환/과도 연산 방지. SELECT 에 LIMIT 없으면 200 캡.
+    if first_kw == "select" and not re.search(r"\bLIMIT\b", cleaned, re.IGNORECASE):
+        cleaned = cleaned.rstrip(";").rstrip() + " LIMIT 200"
+        sql_query = cleaned
 
     try:
         rows = await query_db_async(sql_query)

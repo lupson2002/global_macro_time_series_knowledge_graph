@@ -3,7 +3,7 @@
 Morning Macro Synthesis Agent
 ==============================
 Fetches newly gathered macroeconomic data from the SQLite DB (last 24 hours),
-queries NIM (Tier 2 — qwen3-next-80b-a3b-instruct via nvidia-api-proxy) to synthesize a
+uses Ollama Cloud with a NIM fallback to synthesize a
 daily consensus report with Obsidian backlinks, and exports it to the Daily_Reports folder
 within the Obsidian Vault. TIER2_MODEL env 오버라이드.
 """
@@ -22,6 +22,11 @@ from dotenv import load_dotenv
 from openai import OpenAI
 import markdown as _md
 import re as _re
+
+# src.llm_router 등 src.* 패키지 import 를 위해 프로젝트 루트를 sys.path 에 추가
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 
 def _safe_json_list(raw) -> list:
@@ -93,42 +98,68 @@ def _parse_korean_json_array(content: str) -> list:
         return []
 
 
-def _translate_to_korean_map(client, items: list, model: str = None) -> dict:
-    """👑 [Ver 4.5] (key, text) 쌍을 NIM으로 일괄 한국어 번역 → {key: korean} 맵.
+# 👑 [2026-08-07 사용자 결정] 번역은 Groq(Llama70BRouter) 우선, NIM 폴백.
+# M4 에서 NIM 우선으로 뒤집혔던 것을 원래 의도(Groq 우선)로 복원.
+# M4 의 클라이언트 재사용(싱글턴) 개선은 유지.
+_router: "Llama70BRouter | None" = None
 
+
+def _get_translation_router():
+    """Llama70BRouter 싱글턴 — 호출마다 신규 생성(연결 재수립) 방지."""
+    global _router
+    if _router is None:
+        from src.llm_router import Llama70BRouter
+        _router = Llama70BRouter()
+    return _router
+
+
+def _translate_to_korean_map(client, items: list, model: str = None) -> dict:
+    """👑 [Ver 4.9] (key, text) 쌍을 일괄 한국어 번역 → {key: korean} 맵.
+
+    **Groq(Llama70BRouter) 우선 → NIM(OpenAI 호환 client) 폴백.**
+    client 는 NIM 폴백용으로만 사용된다(Groq 실패/빈 응답 시).
     원문 결정론적 렌더 원칙 유지: LLM은 '번역'만 수행(재생성·요약 금지).
     빈 항목·파싱 실패 시 원문 그대로(fallback). 청크 단위 호출(출력 절삭 방지).
     """
     if not items:
         return {}
-    model = model or TIER2_MODEL
     tr_map = {}
     CHUNK = 20
     SYS = (
-        "당신은 금융/거시경제 도메인 전문 번역가입니다. 주어진 영어 텍스트를 "
-        "자연스러운 한국어로 번역합니다.\n"
-        "규칙:\n"
-        "1. 인명·기관명·티커·종목명·지표명은 그대로 유지(예: Goldman Sachs, NVDA, CPI).\n"
-        "2. 숫자·단위·날짜·비율·통화 기호는 그대로 유지.\n"
-        "3. 의미를 충실하게 보존 — 요약·추론·정보 추가 금지, 번역만 수행.\n"
-        "4. 출력은 입력 순서와 동일한 JSON 문자열 배열 1개만 반환. "
-        "형식: [\"번역1\", \"번역2\", ...] — 다른 설명·마크다운 금지."
+        "You are an expert financial and macroeconomic translator. "
+        "Translate the English text into natural, professional Korean. "
+        "Keep names, tickers, institutions, numbers, units, dates as-is. "
+        "Output ONLY the translated text without commentary, "
+        "as a JSON array of strings in the same order as the input."
     )
+    router = _get_translation_router()
     for i in range(0, len(items), CHUNK):
         chunk = items[i:i + CHUNK]
         numbered = "\n".join(f"{j+1}. {txt}" for j, (_, txt) in enumerate(chunk))
         user = f"아래 {len(chunk)}개 텍스트를 한국어로 번역해 JSON 배열로 반환:\n\n{numbered}"
+        content = None
         try:
-            resp = client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": SYS},
-                    {"role": "user", "content": user},
-                ],
-                temperature=0.1,
-                max_tokens=4096,
-            )
-            arr = _parse_korean_json_array(resp.choices[0].message.content or "")
+            # 1) Groq 우선 (Llama70BRouter — Cerebras/Groq 키 로테이션)
+            try:
+                content = router.generate(
+                    system=SYS, user=user, max_tokens=4096, temperature=0.1
+                )
+            except Exception as e:
+                print(f"[WARN] Groq 번역 실패 — NIM 폴백: {e}")
+                if client is not None:
+                    resp = client.chat.completions.create(
+                        model=model,
+                        messages=[
+                            {"role": "system", "content": SYS},
+                            {"role": "user", "content": user},
+                        ],
+                        max_tokens=4096,
+                        temperature=0.1,
+                    )
+                    content = (resp.choices[0].message.content or "").strip()
+                else:
+                    raise
+            arr = _parse_korean_json_array(content or "")
         except Exception as e:
             print(f"[WARN] Korean translation chunk {i//CHUNK} failed: {e}")
             arr = []
@@ -146,9 +177,7 @@ def _tr(tr_map: dict, key: str, orig: str) -> str:
 # Load dotenv
 load_dotenv()
 
-# 👑 [Tier 2 → NIM 통일] Google Gemini → nvidia-api-proxy 경유 NIM 모델.
-# qwen3-next-80b-a3b-instruct: 80B MoE(3B 활성) — 가벼운 활성 + 강력 지식, 한국어 강점.
-# 일일 종합(정형 JSON 입력)에 적합. (qwen2.5-7b 는 NIM 카탈로그 미포함 → qwen3-next 로 대체)
+# NIM fallback 설정. 일반 합성은 cloud_client의 Ollama Cloud 우선 경로를 사용한다.
 NIM_BASE_URL = os.environ.get("NIM_BASE_URL", "http://localhost:8000")
 NIM_API_KEY = os.environ.get("NIM_API_KEY", "proxy-rotates-keys")  # proxy 가 6-key rotation
 TIER2_MODEL = os.environ.get("TIER2_MODEL", "deepseek-ai/deepseek-v4-flash")  # qwen3-next-80b-a3b 2026-07-27 EOL → deepseek-v4-flash
@@ -711,13 +740,11 @@ def generate_morning_report(db_path: str, vault_dir: str, api_key: str = None, l
     # 2. Format LLM input feed
     feed_text = format_feed_payload(reports)
 
-    # 3. Initialize NIM OpenAI-compatible client (nvidia-api-proxy, 6-key rotation)
-    # 👑 [Tier 2 → NIM] Google Gemini 대신 NIM(qwen2.5-7b-instruct). api_key 인자는
-    # back-compat용(무시) — NIM 은 proxy 가 키 로테이션.
+    # 3. 번역 라우터의 NIM 폴백용 OpenAI-compatible client.
     client = OpenAI(base_url=NIM_BASE_URL, api_key=NIM_API_KEY, timeout=TIER2_TIMEOUT)
 
     # 4. Generate content
-    print(f"🤖 Synthesizing daily consensus report via NIM ({TIER2_MODEL})...")
+    print("🤖 Synthesizing daily consensus report via Ollama (deepseek-v4-flash:0731-cloud, NIM 폴백)...")
 
     # KST 보정 — 서버가 UTC라도 한국장 기준 날짜로 라벨링.
     today_str = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=9)).strftime("%Y-%m-%d")
@@ -738,22 +765,17 @@ def generate_morning_report(db_path: str, vault_dir: str, api_key: str = None, l
     max_retries = 5
     initial_delay = 5.0
     backoff_factor = 2.0
-    response = None
-
+    from src import cloud_client
     for attempt in range(max_retries):
         try:
-            response = client.chat.completions.create(
-                model=TIER2_MODEL,
-                messages=[
-                    {"role": "system", "content": system_msg},
-                    {"role": "user", "content": prompt},
-                ],
-                temperature=0.2,
-                max_tokens=4096,
+            # 👑 [Ollama 전환] NIM → cloud_client (Ollama Cloud 우선, NIM 폴백)
+            report_content = cloud_client.chat_completion(
+                system=system_msg, user=prompt, max_tokens=4096, temperature=0.2,
+                nim_model=TIER2_MODEL,
             )
             break
         except Exception as e:
-            print(f"[WARN] NIM call error on daily report synthesis attempt {attempt+1}: {e}")
+            print(f"[WARN] LLM call error on daily report synthesis attempt {attempt+1}: {e}")
             if attempt < max_retries - 1:
                 sleep_time = initial_delay * (backoff_factor ** attempt)
                 print(f"   Waiting {sleep_time} seconds before retrying...")
@@ -761,10 +783,10 @@ def generate_morning_report(db_path: str, vault_dir: str, api_key: str = None, l
             else:
                 raise
 
-    report_content = (response.choices[0].message.content or "").strip()
-    # 👑 [A15] 빈 응답 가드 — NIM 빈 응답 시 빈 리포트 저장 방지.
+    report_content = (report_content or "").strip()
+    # 빈 응답 가드 — 빈 리포트 저장 방지.
     if not report_content:
-        print("[WARN] NIM returned empty response — skipping save.")
+        print("[WARN] LLM returned empty response — skipping save.")
         return ""
 
     # Double check/ensure date headers in report
@@ -774,7 +796,7 @@ def generate_morning_report(db_path: str, vault_dir: str, api_key: str = None, l
     # 실패 시 원문 fallback 되므로 리포트 생성은 중단되지 않음.
     tr_items = _collect_translatable(reports)
     if tr_items:
-        print(f"🌐 Translating {len(tr_items)} evidence texts to Korean via NIM ({TIER2_MODEL})...")
+        print(f"🌐 Translating {len(tr_items)} evidence texts to Korean via Groq (Llama70BRouter, NIM 폴백)...")
         tr_map = _translate_to_korean_map(client, tr_items, model=TIER2_MODEL)
         print(f"   translated {len(tr_map)}/{len(tr_items)} items.")
     else:

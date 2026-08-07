@@ -4,10 +4,8 @@ Grand Reasoner Orchestrator for Global Macro Time-Series Knowledge Graph
 ======================================================================
 1. Aggregates data by calling MCP server tools locally.
 2. Directs the compiled macro context to a high-capacity Frontier Cloud Reasoning model.
-3. STRICTLY uses NIM (NVIDIA API) via nvidia-api-proxy — OpenAI 호환:
-   - Tier 3 Reasoner: deepseek-ai/deepseek-v4-pro (TIER3_MODEL env 오버라이드)
-   - (이전 Anthropic/OpenAI 분기 폐지 — NIM 통일)
-4. NO LOCAL LLM OR OLLAMA INFERENCE IS RUN ON THIS MACHINE (NIM proxy 는 원격 API).
+3. Uses the shared LLM route: Ollama Cloud first, then the NIM model selected by TIER3_MODEL.
+4. Runs no local model inference on this machine; both generation paths are remote.
 5. Formats and exports a comprehensive 'Global Macro Asset Allocation Strategy' report to Obsidian Vault.
 """
 
@@ -18,7 +16,6 @@ import asyncio
 import datetime
 from pathlib import Path
 from dotenv import load_dotenv
-from openai import OpenAI
 import logging
 
 logger = logging.getLogger(__name__)
@@ -40,12 +37,11 @@ from src.report_generator import send_email_report
 # ---------------------------------------------------------------------------
 # Configuration Variables (Default with Environment overrides)
 # ---------------------------------------------------------------------------
-# 👑 [Tier 3 → NIM 통일] Anthropic/OpenAI/DeepSeek 분기 폐지. NIM(OpenAI 호환)
-# 경유 deepseek-v4-pro(DeepSeek 추론 강력, 한국어 정확). proxy 가 6-key rotation.
-# (deepseek-r1-distill-qwen-32b 는 NIM 카탈로그 미포함 → deepseek-v4-pro 로 대체)
+# Tier 3 NIM fallback configuration. General generation uses cloud_client.
 NIM_BASE_URL = os.environ.get("NIM_BASE_URL", "http://localhost:8000")
 NIM_API_KEY = os.environ.get("NIM_API_KEY", "proxy-rotates-keys")
-TIER3_MODEL = os.environ.get("TIER3_MODEL", "deepseek-ai/deepseek-v4-pro")
+# 2026-08-06 사용자 결정: 주간 보고서는 flash 로 통일(pro→flash 다운그레이드 승인). .env 로 오버라이드 가능.
+TIER3_MODEL = os.environ.get("TIER3_MODEL", "deepseek-ai/deepseek-v4-flash")
 # 👑 구 REASONER_MODEL env(claude-3-5-sonnet 등 Anthropic 모델명)는 NIM 통일로 무효 —
 # back-compat 덮어쓰기 제거(.env 의 REASONER_MODEL 이 NIM 없는 모델 → 404 방지).
 
@@ -188,10 +184,27 @@ async def aggregate_macro_context() -> str:
     # frontier reasoner, no chunking, no summarization at this layer.
     context_str = f"## 📊 PIPELINE STATUS SUMMARY\n{json.dumps(status_data, indent=2, ensure_ascii=False)}\n\n"
 
-    context_str += f"## 🎙️ RECENT EXPERT OPINIONS (full corpus, n={len(recent_reports)})\n"
+    # 👑 [2026-08-06 M1] recent 섹션을 컨텍스트 예산의 ~70%로 캡.
+    # 기존 head 200K 절삭은 섹션 순서상 RECENT(전체, LIMIT 없음)가 예산을 독점하면
+    # 끝의 CONTRARIAN 섹션이 0% 포함됐음(DB 성장 시 비대칭/contrarian 분석이
+    # 데이터 없이 생성 → 환각 유도). recent 를 예산 내로 제한해 contrarian 은
+    # 항상 끝에 append 되도록 보존.
+    MAX_CONTEXT_CHARS = 200_000
+    RECENT_BUDGET_CHARS = int(MAX_CONTEXT_CHARS * 0.7)
+
+    context_str += f"## 🎙️ RECENT EXPERT OPINIONS (budgeted ~{RECENT_BUDGET_CHARS:,} chars, n={len(recent_reports)})\n"
     if recent_reports and isinstance(recent_reports, list):
+        recent_used = 0
+        dropped = 0
         for idx, r in enumerate(recent_reports, 1):
-            context_str += _render_report_block(idx, r)
+            block = _render_report_block(idx, r)
+            if recent_used and recent_used + len(block) > RECENT_BUDGET_CHARS:
+                dropped = len(recent_reports) - idx + 1
+                break
+            context_str += block
+            recent_used += len(block)
+        if dropped:
+            context_str += f"(RECENT 예산 초과 — 이후 {dropped}건 생략, contrarian 은 하단에 보존)\n\n"
     else:
         context_str += "No recent reports available.\n\n"
 
@@ -204,9 +217,8 @@ async def aggregate_macro_context() -> str:
 
     print(f"   ✓ Assembled {len(recent_reports)} reports + {len(contrarian_views)} contrarians "
           f"into {len(context_str):,}-char context buffer.")
-    # H3: context buffer 상한 — DB 성장 시 NIM ctx limit 초과 회귀 방지.
-    # 최신이 앞(recent_reports 최신순)이라 가정해 head 200K 유지, 초과분 절삭.
-    MAX_CONTEXT_CHARS = 200_000
+    # 최종 안전장치 — recent 가 예산 안이라도 contrarian 이 극단적으로 크면 초과 가능.
+    # head 200K 유지(최신 우선), 과도한 contrarian 만 잘리도록 유지.
     if len(context_str) > MAX_CONTEXT_CHARS:
         print(f"   ⚠️ context buffer {len(context_str):,} > {MAX_CONTEXT_CHARS:,} — head {MAX_CONTEXT_CHARS:,}로 절삭(NIM ctx limit 보호).")
         context_str = context_str[:MAX_CONTEXT_CHARS]
@@ -217,30 +229,17 @@ async def aggregate_macro_context() -> str:
 # ---------------------------------------------------------------------------
 # 👑 OpenAI SDK 사용 — httpx 직접 POST /chat/completions 은 proxy 라우트 404.
 # local_llm_client.py(Tier 1)와 동일 패턴. 동기 클라이언트를 asyncio.to_thread 로 비동기화.
-_nim_client = OpenAI(base_url=NIM_BASE_URL, api_key=NIM_API_KEY, timeout=180.0)
 
 
 def _call_nim_reasoner_sync(system: str, user: str) -> str:
-    """동기 NIM 호출(asyncio.to_thread 로 비동기화하여 호출)."""
-    resp = _nim_client.chat.completions.create(
-        model=TIER3_MODEL,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-        temperature=0.3,
-        max_tokens=8192,
+    """동기 LLM 호출(asyncio.to_thread 로 비동기화) — Ollama Cloud 우선, NIM 폴백."""
+    from src import cloud_client
+    content = cloud_client.chat_completion(
+        system=system, user=user, max_tokens=8192, temperature=0.3, nim_model=TIER3_MODEL,
     )
-    content = resp.choices[0].message.content
-    if content is None:
-        # reasoning 모델(content null/reasoning_content 분리) — 출력 아님.
-        raise RuntimeError(
-            f"NIM returned null content for {TIER3_MODEL} "
-            f"(reasoning-only or blocked). Check model supports chat output."
-        )
-    if isinstance(content, list):
-        content = "".join(p.get("text", "") for p in content if isinstance(p, dict))
-    return str(content)
+    if not content:
+        raise RuntimeError(f"Ollama/NIM returned empty content for {TIER3_MODEL}")
+    return content
 
 
 def _extract_viz_json(report_content: str) -> dict:
@@ -312,8 +311,42 @@ def _render_cio_visuals(viz_json: dict, out_dir: Path) -> dict:
                 G.add_edge(sg, topic, label="Short")
             net = Network(height="500px", width="100%", notebook=False, bgcolor="#ffffff")
             net.from_nx(G)
+            # 👑 [2026-08-07] 진동/겹침 방지 options — forceAtlas2Based + continuous smooth
+            net.options = {
+                "configure": {"enabled": False},
+                "edges": {
+                    "color": {"inherit": True},
+                    "smooth": {"enabled": True, "type": "continuous"},
+                },
+                "interaction": {"dragNodes": True},
+                "physics": {
+                    "enabled": True,
+                    "solver": "forceAtlas2Based",
+                    "forceAtlas2Based": {
+                        "gravitationalConstant": -50,
+                        "centralGravity": 0.01,
+                        "springLength": 100,
+                        "springConstant": 0.08,
+                        "damping": 0.4,
+                        "avoidOverlap": 1,
+                    },
+                    "stabilization": {"iterations": 2000},
+                },
+            }
             p = out_dir / "cio_conflicts.html"
             net.write_html(str(p), notebook=False)
+            # 안정화 완료 후 물리 엔진 off — 노드 위치 고정 (진동 제거)
+            html = p.read_text(encoding="utf-8")
+            if "stabilizationIterationsDone" not in html:
+                script = (
+                    '<script type="text/javascript">\n'
+                    'network.once("stabilizationIterationsDone", function() {\n'
+                    '    network.setOptions({ physics: false });\n'
+                    '});\n'
+                    '</script>\n</body>'
+                )
+                html = html.replace("</body>", script)
+                p.write_text(html, encoding="utf-8")
             paths["conflicts"] = p
     except Exception as e:
         logger.warning(f"갈등 다이어그램 실패: {e}")
@@ -358,12 +391,8 @@ def _replace_json_block_with_tables(report_content: str, viz_json: dict) -> str:
 
 
 async def query_reasoner_llm(context_data: str) -> str:
-    """Queries NIM reasoning model (deepseek-v4-pro) via nvidia-api-proxy.
-
-    👑 [Tier 3 → NIM 통일] Anthropic/OpenAI 분기 폐지. OpenAI SDK 로 NIM 호출.
-    thinking 블록 불필요(DeepSeek 자체 추론).
-    """
-    print(f"🤖 [2/3] Dispatching to NIM Reasoner: {TIER3_MODEL}...")
+    """Queries the shared Ollama Cloud/NIM fallback route."""
+    print(f"🤖 [2/3] Dispatching to LLM (NIM fallback: {TIER3_MODEL})...")
 
     system_instruction = (
         "당신은 최고 수준의 최고투자책임자(CIO)이자 시니어 글로벌 매크로 전략가입니다.\n"
@@ -405,17 +434,17 @@ async def query_reasoner_llm(context_data: str) -> str:
             result = await asyncio.to_thread(_call_nim_reasoner_sync, system_instruction, prompt)
             result = result.strip()
             if not result:
-                raise RuntimeError(f"NIM returned empty content for {TIER3_MODEL}")
+                raise RuntimeError(f"LLM returned empty content for {TIER3_MODEL}")
             return result
         except Exception as e:
             last_err = e
             if attempt < max_retries - 1:
                 sleep_s = 2.0 * (2 ** attempt)
-                print(f"   [WARN] NIM call attempt {attempt+1} failed: {e} — retry in {sleep_s}s")
+                print(f"   [WARN] LLM call attempt {attempt+1} failed: {e} — retry in {sleep_s}s")
                 await asyncio.sleep(sleep_s)
             else:
                 raise
-    raise RuntimeError(f"NIM reasoning failed after {max_retries} attempts: {last_err}")
+    raise RuntimeError(f"LLM reasoning failed after {max_retries} attempts: {last_err}")
 
 # ---------------------------------------------------------------------------
 # Report Saving Step

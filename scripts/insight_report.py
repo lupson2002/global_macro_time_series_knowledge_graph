@@ -16,9 +16,12 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from src.insights.cross_matrix import build_all_matrices, df_to_markdown
 from src.insights.knowledge_graph import (
     build_cooccurrence_graph,
+    build_visualization_graph,
     detect_communities,
     render_pyvis,
+    render_force_graph_3d,
     render_plotly_dashboard,
+    summarize_network,
 )
 
 
@@ -37,8 +40,14 @@ def build_report(no_llm: bool = False, expiry: str = "timebox") -> tuple[str, di
     n_nodes, n_edges, n_comms = G.number_of_nodes(), G.number_of_edges(), len(set(comm.values()))
     deg_top = sorted(dict(nx.degree_centrality(G)).items(), key=lambda x: -x[1])[:8]
 
-    print("🎨 [3/4] 시각화(pyvis + plotly)...")
-    pyvis_path = render_pyvis(G, comm)
+    # 시각화용 정제 그래프 (가독성 최적화: 고립/리프 제거 + 중심성)
+    Gv, comm_v, cent_v = build_visualization_graph(G)
+    nv_nodes, nv_edges = Gv.number_of_nodes(), Gv.number_of_edges()
+    summarize_network(Gv, comm_v)
+
+    print("🎨 [3/4] 시각화(pyvis 2D + 3d-force-graph 3D + 대시보드)...")
+    pyvis_path = render_pyvis(Gv, comm_v, cent_v)
+    three_d_path = render_force_graph_3d(Gv, comm_v, cent_v)
     dash_path = render_plotly_dashboard(matrices, G, comm)
 
     rag_insights: dict[str, str] = {}
@@ -107,6 +116,7 @@ def build_report(no_llm: bool = False, expiry: str = "timebox") -> tuple[str, di
     L.append("## 5. 지식그래프 요약")
     L.append("")
     L.append(f"- 노드 {n_nodes} / 엣지 {n_edges} / 커뮤니티 {n_comms}")
+    L.append(f"- 시각화 정제: 노드 {nv_nodes} / 엣지 {nv_edges} (min_degree=2, min_edge_weight=2, 고립/리프 제거)")
     L.append("- 중심성 상위(자산↔테마 연결 허브):")
     for n, c in deg_top:
         L.append(f"  - **{n}**: {c:.3f}")
@@ -145,7 +155,7 @@ def build_report(no_llm: bool = False, expiry: str = "timebox") -> tuple[str, di
         "nodes": n_nodes, "edges": n_edges, "communities": n_comms,
         "rag_queries": len(rag_insights),
         "has_key_conclusions": bool(key_conclusions),
-        "pyvis_path": pyvis_path, "dashboard_path": dash_path,
+        "pyvis_path": pyvis_path, "three_d_path": three_d_path, "dashboard_path": dash_path,
     }
     return md, summary
 
@@ -183,20 +193,22 @@ def send_email_with_visuals(md: str, summary: dict, subject: str) -> None:
     msg.attach(alt)
 
     # 본문 PNG inline 제거 — 본문은 표(마크다운)만. 시각화는 첨부.
-    # 첨부: pyvis 그래프 HTML + plotly 대시보드 HTML (브라우저에서 인터랙티브)
-    for key, fname in (("pyvis_path", "knowledge_graph.html"), ("dashboard_path", "insight_dashboard.html")):
+    # 첨부: pyvis 2D + plotly 3D 그래프 + plotly 대시보드 HTML (브라우저에서 인터랙티브)
+    n_att = 0
+    for key, fname in (("pyvis_path", "knowledge_graph.html"), ("three_d_path", "knowledge_graph_3d.html"), ("dashboard_path", "insight_dashboard.html")):
         p = summary.get(key)
         if p and Path(p).is_file():
             with open(p, "rb") as f:
                 att = MIMEApplication(f.read(), _subtype="html")
             att.add_header("Content-Disposition", "attachment", filename=fname)
             msg.attach(att)
+            n_att += 1
 
     try:
         with smtplib.SMTP_SSL(host, port, timeout=60) as s:
             s.login(user, pwd)
             s.sendmail(user, recipients, msg.as_string())
-        print(f"✓ 메일 발송 완료 (본문 표 + HTML 첨부 2) → {', '.join(recipients)}")
+        print(f"✓ 메일 발송 완료 (본문 표 + HTML 첨부 {n_att}) → {', '.join(recipients)}")
     except Exception as e:
         print(f"⚠️ 시각화 메일 발송 실패({e}) — plain 텍스트 폴백 발송")
         send_email_report(subject, md)  # report_generator plain 발송 폴백

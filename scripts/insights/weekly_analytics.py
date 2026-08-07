@@ -19,6 +19,11 @@ import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
+# 👑 [2026-08-06 L4] 서버=UTC vs broadcast_date=KST 1일 시차 보정 — UTC 00:00~09:00
+# 사이(KST 09:00~18:00)에 date.today()/date('now') 가 하루 느림.
+import datetime as _dt
+KST_TODAY = (_dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(hours=9)).date()
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
@@ -56,7 +61,7 @@ def narrative_velocity(days: int = 7, baseline_days: int = 30, top_k: int = 5, m
         rows30 = conn.execute(
             "SELECT r.broadcast_date, n.node_value FROM nodes n "
             "JOIN reports r ON n.video_id = r.video_id "
-            "WHERE r.broadcast_date >= date('now', ?) AND n.node_type IN ('macro_theme','ticker')",
+            "WHERE r.broadcast_date >= date('now', '+9 hours', ?) AND n.node_type IN ('macro_theme','ticker')",
             (f"-{baseline_days} days",),
         ).fetchall()
     finally:
@@ -69,7 +74,7 @@ def narrative_velocity(days: int = 7, baseline_days: int = 30, top_k: int = 5, m
         if not v:
             continue
         node_counts30[v] += 1
-        if r["broadcast_date"] >= (__import__("datetime").date.today() - __import__("datetime").timedelta(days=days)).isoformat():
+        if r["broadcast_date"] >= (KST_TODAY - _dt.timedelta(days=days)).isoformat():
             node_counts7[v] += 1
 
     out = []
