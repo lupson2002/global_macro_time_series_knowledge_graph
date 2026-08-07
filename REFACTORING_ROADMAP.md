@@ -77,3 +77,13 @@ Telegram tool loop, insight 파이프라인이다.
 - 수동/RSS 우선순위와 중복 제거, tier 전달, underscore video ID backfill,
   부분 실패 종료 코드, 처리 순서와 지연 조건을 characterization test로 고정했다.
 - 공개 CLI 옵션과 저장 schema는 변경하지 않았다.
+
+## 두 번째 구현 파동 결과
+
+- 공개 dict 입력을 보존하는 immutable `MacroView` adapter를 추가했다.
+- section 접근은 read-only이며 malformed section을 빈 mapping으로 격리한다.
+- list projection은 복사본을 반환해 저장 단계의 원본 mutation을 방지한다.
+- SQLite 신규 저장과 reconciliation 복구가 단일 `vector_document()`를 사용한다.
+- `SQLiteExporter.export_data`의 decision points는 19에서 9, 위험 점수는 12에서 11로 감소했다.
+- 엄격한 Pydantic `MacroViewSchema`는 LLM 검증에 유지해 legacy 저장 호환성과 역할을 분리했다.
+- SQLite schema, Markdown 형식, LanceDB schema는 변경하지 않았다.

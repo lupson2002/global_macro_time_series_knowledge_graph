@@ -53,6 +53,7 @@ SQLite가 정형 원본이며 Obsidian과 LanceDB는 재생성 가능한 파생 
 | 파일 | 역할 |
 |---|---|
 | `main.py` | CLI 대상 탐색, 진행 집계, DB→Markdown backfill 진입점 |
+| `src/domain.py` | 추출 dict의 read-only domain view와 공통 vector projection |
 | `src/pipeline.py` | 단일 영상 처리 서비스, 단계별 결과·중단·부분 저장 상태 |
 | `src/ingestion.py` | YouTube RSS·transcript·yt-dlp 폴백 |
 | `src/local_llm_client.py` | Pydantic 스키마, 프롬프트, JSON 복구/Validation |

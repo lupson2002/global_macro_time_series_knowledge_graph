@@ -68,6 +68,12 @@ configured Cerebras/Groq providers (round-robin/failover)
 
 ## 4. Data ownership
 
+`src.domain.MacroView`는 LLM과 SQLite backfill이 제공하는 공개 dict schema를 감싸는
+read-only domain boundary다. malformed section은 빈 mapping으로 격리하고 list projection은
+복사본을 반환한다. 엄격한 `MacroViewSchema`는 LLM 응답 검증을, `MacroView` adapter는 legacy
+호환 저장을 담당한다. SQLite 저장과 reconciliation은 동일한 `vector_document()` projection을
+사용하므로 LanceDB 필드 해석이 한곳에서 정의된다.
+
 ### SQLite: source of truth
 
 - `reports`: 메타데이터, thesis, quotes, evidence, narrative fields

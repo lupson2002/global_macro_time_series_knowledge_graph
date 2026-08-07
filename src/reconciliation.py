@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Callable, Iterable
 
 from src.exporter import ObsidianMDExporter, _load_db_report_as_schema
+from src.domain import MacroView
 
 
 _MARKDOWN_ID_RE = re.compile(r"_(\d{4}-\d{2}-\d{2})_([A-Za-z0-9_-]{11})$")
@@ -101,46 +102,12 @@ def upsert_schema_vector(schema: dict, lancedb_dir: Path | None = None) -> bool:
     """Project one rehydrated SQLite schema into LanceDB."""
     from src import lancedb_store
 
-    metadata = schema.get("metadata", {})
-    graph = schema.get("graph_nodes", {})
-    details = schema.get("view_details", {})
-    return lancedb_store.upsert_document(
-        video_id=metadata.get("video_id", ""),
-        text=(details.get("core_thesis") or "")
-        + "\n"
-        + (details.get("verbatim_quote") or ""),
-        broadcast_date=metadata.get("broadcast_date"),
-        source_channel=metadata.get("source_channel"),
-        macro_theme=graph.get("macro_themes"),
-        asset_class=graph.get("asset_classes"),
-        ticker=graph.get("specific_tickers"),
-        expectation_gap=schema.get("expectation_gap"),
-        causal_chain=schema.get("causal_chain"),
-        tracking_indicators=schema.get("tracking_indicators"),
-        tactical_stance=schema.get("tactical_stance"),
-        db_dir=lancedb_dir,
-    )
+    document = MacroView.from_mapping(schema).vector_document()
+    return lancedb_store.upsert_document(**document, db_dir=lancedb_dir)
 
 
 def _schema_vector_document(schema: dict) -> dict:
-    metadata = schema.get("metadata", {})
-    graph = schema.get("graph_nodes", {})
-    details = schema.get("view_details", {})
-    return {
-        "video_id": metadata.get("video_id", ""),
-        "text": (details.get("core_thesis") or "")
-        + "\n"
-        + (details.get("verbatim_quote") or ""),
-        "broadcast_date": metadata.get("broadcast_date"),
-        "source_channel": metadata.get("source_channel"),
-        "macro_theme": graph.get("macro_themes"),
-        "asset_class": graph.get("asset_classes"),
-        "ticker": graph.get("specific_tickers"),
-        "expectation_gap": schema.get("expectation_gap"),
-        "causal_chain": schema.get("causal_chain"),
-        "tracking_indicators": schema.get("tracking_indicators"),
-        "tactical_stance": schema.get("tactical_stance"),
-    }
+    return MacroView.from_mapping(schema).vector_document()
 
 
 def upsert_schema_vectors(

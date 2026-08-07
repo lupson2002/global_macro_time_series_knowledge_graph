@@ -19,6 +19,7 @@ The suite uses temporary directories and mocks. It does not require network acce
 - `test_pipeline_contracts.py`: macro relevance rules, skipped-video idempotency, channel tier filtering.
 - `test_pipeline_service.py`: full-transcript handoff, typed stage failures, IP-block abort, delay policy and retryable partial storage.
 - `test_main_cli.py`: CLI defaults, target ordering/deduplication, tier selection, backfill ID handling, delay sequencing, and exit status.
+- `test_domain.py`: read-only schema sections, malformed-section isolation, list copy safety, and canonical vector projection.
 - `test_reconciliation.py`: drift planning, read-only audit, explicit apply guard, backup integrity, missing-only repair, and batched vector repair ordering.
 - `test_providers_and_vectors.py`: provider failover, embedding boundaries, vector search, and single-transaction batch upsert.
 - `test_refactoring_audit.py`: deterministic AST metrics, risk ordering, and JSON output for refactoring baselines.

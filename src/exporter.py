@@ -12,6 +12,8 @@ import sqlite3
 import re
 from pathlib import Path
 
+from src.domain import MacroView
+
 # ---------------------------------------------------------------------------
 # 1. SQLite Exporter
 # ---------------------------------------------------------------------------
@@ -172,12 +174,13 @@ class SQLiteExporter:
 
     def export_data(self, data: dict):
         """Inserts or replaces the extracted view data into SQLite tables."""
-        metadata = data.get("metadata", {})
-        graph_nodes = data.get("graph_nodes", {})
-        quant_signals = data.get("quant_signals", {})
-        view_details = data.get("view_details", {})
+        view = MacroView.from_mapping(data)
+        metadata = view.metadata
+        graph_nodes = view.graph_nodes
+        quant_signals = view.quant_signals
+        view_details = view.view_details
         
-        video_id = metadata.get("video_id")
+        video_id = view.video_id
         if not video_id:
             raise ValueError("Cannot export to SQLite: Missing video_id in metadata.")
 
@@ -188,24 +191,30 @@ class SQLiteExporter:
             # 1. Insert into reports
             # 👑 [Ver 4.3] conditional_catalysts / invalidation_risks 영구화 — 리스트 → JSON.
             # 👑 [Ver 4.4] key_data_points / additional_quotes / price_targets(JSON) + speaker_institution.
-            cats = view_details.get("conditional_catalysts")
-            risks = view_details.get("invalidation_risks")
-            cats_json = json.dumps(cats, ensure_ascii=False) if isinstance(cats, list) else "[]"
-            risks_json = json.dumps(risks, ensure_ascii=False) if isinstance(risks, list) else "[]"
-            kdp = view_details.get("key_data_points")
-            kdp_json = json.dumps(kdp, ensure_ascii=False) if isinstance(kdp, list) else "[]"
-            aq = view_details.get("additional_quotes")
-            aq_json = json.dumps(aq, ensure_ascii=False) if isinstance(aq, list) else "[]"
-            pt = view_details.get("price_targets")
-            pt_json = json.dumps(pt, ensure_ascii=False) if isinstance(pt, list) else "[]"
+            cats_json = json.dumps(
+                view.section_list(view_details, "conditional_catalysts"), ensure_ascii=False
+            )
+            risks_json = json.dumps(
+                view.section_list(view_details, "invalidation_risks"), ensure_ascii=False
+            )
+            kdp_json = json.dumps(
+                view.section_list(view_details, "key_data_points"), ensure_ascii=False
+            )
+            aq_json = json.dumps(
+                view.section_list(view_details, "additional_quotes"), ensure_ascii=False
+            )
+            pt_json = json.dumps(
+                view.section_list(view_details, "price_targets"), ensure_ascii=False
+            )
             # 👑 [Ver 4.7] 4대 내러티브 필드 영구화 — 리스트 → JSON. 기존 행은 NULL.
-            exp_gap = data.get("expectation_gap")
-            causal = data.get("causal_chain")
-            tracking = data.get("tracking_indicators")
-            tactical = data.get("tactical_stance")
-            causal_json = json.dumps(causal, ensure_ascii=False) if isinstance(causal, list) else "[]"
-            tracking_json = json.dumps(tracking, ensure_ascii=False) if isinstance(tracking, list) else "[]"
-            tactical_json = json.dumps(tactical, ensure_ascii=False) if isinstance(tactical, list) else "[]"
+            exp_gap = view.raw.get("expectation_gap")
+            causal_json = json.dumps(view.list_value("causal_chain"), ensure_ascii=False)
+            tracking_json = json.dumps(
+                view.list_value("tracking_indicators"), ensure_ascii=False
+            )
+            tactical_json = json.dumps(
+                view.list_value("tactical_stance"), ensure_ascii=False
+            )
             # 👑 [2026-08-06 H3] INSERT OR REPLACE → ON CONFLICT DO UPDATE:
             # OR REPLACE 는 행 삭제 후 재삽입이라 created_at(CURRENT_TIMESTAMP)이
             # "지금"으로 리셋 → 백필 시 과거 영상이 24h 보고서에 오염. created_at 은
@@ -283,9 +292,9 @@ class SQLiteExporter:
                         VALUES (?, ?, ?)
                     """, (video_id, node_type, item.strip()))
 
-            insert_nodes(graph_nodes.get("macro_themes"), "macro_theme")
-            insert_nodes(graph_nodes.get("asset_classes"), "asset_class")
-            insert_nodes(graph_nodes.get("specific_tickers"), "ticker")
+            insert_nodes(view.section_list(graph_nodes, "macro_themes"), "macro_theme")
+            insert_nodes(view.section_list(graph_nodes, "asset_classes"), "asset_class")
+            insert_nodes(view.section_list(graph_nodes, "specific_tickers"), "ticker")
 
             conn.commit()
 
@@ -293,19 +302,7 @@ class SQLiteExporter:
             # 실패해도 비파괴 (SQLite 가 진실 원본).
             try:
                 from src import lancedb_store
-                lancedb_store.upsert_document(
-                    video_id=video_id,
-                    text=(view_details.get("core_thesis") or "") + "\n" + (view_details.get("verbatim_quote") or ""),
-                    broadcast_date=metadata.get("broadcast_date"),
-                    source_channel=metadata.get("source_channel"),
-                    macro_theme=graph_nodes.get("macro_themes"),
-                    asset_class=graph_nodes.get("asset_classes"),
-                    ticker=graph_nodes.get("specific_tickers"),
-                    expectation_gap=data.get("expectation_gap"),
-                    causal_chain=data.get("causal_chain"),
-                    tracking_indicators=data.get("tracking_indicators"),
-                    tactical_stance=data.get("tactical_stance"),
-                )
+                lancedb_store.upsert_document(**view.vector_document())
             except Exception as vec_err:
                 print(f"[WARN] LanceDB upsert failed for {video_id}: {vec_err}")
 
@@ -325,10 +322,11 @@ class ObsidianMDExporter:
 
     def export_markdown(self, data: dict) -> Path:
         """Generates an Obsidian Markdown file conforming to the required template."""
-        metadata = data.get("metadata", {})
-        graph_nodes = data.get("graph_nodes", {})
-        quant_signals = data.get("quant_signals", {})
-        view_details = data.get("view_details", {})
+        view = MacroView.from_mapping(data)
+        metadata = view.metadata
+        graph_nodes = view.graph_nodes
+        quant_signals = view.quant_signals
+        view_details = view.view_details
 
         speaker = metadata.get("speaker_name", "Unknown_Speaker")
         date_str = metadata.get("broadcast_date") or "Unknown_Date"
@@ -348,9 +346,9 @@ class ObsidianMDExporter:
         # Extract plain version for YAML frontmatter (without brackets [[ ]])
         time_box_clean = time_box_raw.replace("[[", "").replace("]]", "")
         
-        macro_themes_str = ", ".join(graph_nodes.get("macro_themes", []))
-        asset_classes = graph_nodes.get("asset_classes", [])
-        specific_tickers = graph_nodes.get("specific_tickers", [])
+        macro_themes_str = ", ".join(view.section_list(graph_nodes, "macro_themes"))
+        asset_classes = view.section_list(graph_nodes, "asset_classes")
+        specific_tickers = view.section_list(graph_nodes, "specific_tickers")
         
         # Merge asset classes and tickers for display
         assets_and_tickers_str = ", ".join(asset_classes + specific_tickers)
@@ -361,8 +359,12 @@ class ObsidianMDExporter:
                 return "* (None extracted)"
             return "\n".join([f"* {item.strip()}" for item in items if item])
 
-        catalysts_bullets = list_to_bullets(view_details.get("conditional_catalysts", []))
-        risks_bullets = list_to_bullets(view_details.get("invalidation_risks", []))
+        catalysts_bullets = list_to_bullets(
+            view.section_list(view_details, "conditional_catalysts")
+        )
+        risks_bullets = list_to_bullets(
+            view.section_list(view_details, "invalidation_risks")
+        )
 
         # Escape double quotes to prevent YAML/Markdown breakdown
         core_thesis = view_details.get("core_thesis", "").replace('"', '\\"')
@@ -382,9 +384,9 @@ class ObsidianMDExporter:
         # 👑 [Ver 4.4] 신규 증거 필드
         view_time_horizon = quant_signals.get("view_time_horizon", "")
         speaker_institution = metadata.get("speaker_institution", "")
-        key_data_points = view_details.get("key_data_points", []) or []
-        additional_quotes = view_details.get("additional_quotes", []) or []
-        price_targets = view_details.get("price_targets", []) or []
+        key_data_points = view.section_list(view_details, "key_data_points")
+        additional_quotes = view.section_list(view_details, "additional_quotes")
+        price_targets = view.section_list(view_details, "price_targets")
 
         # 👑 YAML frontmatter 안전 인용 — speaker/role/source/date 등에
         # : / # / \n 포함 시 YAML 깨짐 방지. 모든 문자열 값을 quote+escape.

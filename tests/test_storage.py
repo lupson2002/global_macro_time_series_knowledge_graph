@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from src.exporter import ObsidianMDExporter, SQLiteExporter, _load_db_report_as_schema
+from src.domain import MacroView
 
 from helpers import macro_view
 
@@ -78,6 +79,15 @@ class SQLiteExporterTests(unittest.TestCase):
             self.assertEqual(rows[0]["view_details"]["conditional_catalysts"], ["CPI cools"])
             self.assertEqual(rows[0]["causal_chain"], ["CPI down", "Yields down", "Bonds up"])
             self.assertEqual(rows[0]["quant_signals"]["view_time_horizon"], "Months")
+
+    def test_sqlite_export_uses_canonical_vector_projection(self):
+        with tempfile.TemporaryDirectory() as directory:
+            data = macro_view()
+            exporter = SQLiteExporter(str(Path(directory) / "macro.db"))
+            with patch("src.lancedb_store.upsert_document") as upsert:
+                exporter.export_data(data)
+
+        upsert.assert_called_once_with(**MacroView.from_mapping(data).vector_document())
 
 
 class ObsidianExporterTests(unittest.TestCase):
