@@ -167,3 +167,12 @@ python scripts/insights/run_market_narrative.py
 - 정식 회귀 테스트 커버리지가 아직 낮습니다.
 - 비활성 Tier 3/4 channel ID는 운영 전 검증이 필요합니다.
 - 블로그 발행은 외부 플랫폼 로그인 세션에 의존합니다.
+
+## 테스트
+
+```bash
+.venv/bin/python -m unittest discover -s tests -v
+.venv/bin/python -m compileall -q main.py src scripts publish_all_blogs.py tests
+```
+
+테스트는 임시 SQLite/Obsidian 경로와 mock provider를 사용하며 운영 DB, LanceDB, `.env`, cookies, 외부 API에 접근하지 않습니다. 세부 계약과 확장 규칙은 `TESTING.md`를 참고하세요.
