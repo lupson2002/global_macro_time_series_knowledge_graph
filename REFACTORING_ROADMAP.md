@@ -148,3 +148,19 @@ delivery adapter, 렌더링 envelope, 파생 LLM 경계, 얇은 진입점 순으
 
 다음 3차 구현은 frontmatter, Markdown 표 escape, HTML envelope의 공통 렌더링 후보를
 분류하고 출력 snapshot을 보강한 뒤 순수 rendering helper만 이동한다.
+
+## 다섯 번째 구현 파동 3차 결과
+
+- ordered YAML frontmatter envelope, Markdown table cell escape, Gmail inline-style HTML을
+  `src/report_rendering.py`의 순수 함수로 분리했다.
+- Daily, CIO, Market Narrative의 frontmatter 필드·순서·태그는 호출부에 남겨 보고서별
+  schema 차이를 보존했다.
+- CIO와 Weekly Analytics가 공통 table-cell escape를 사용하되 기존 newline/strip 정책
+  차이는 명시적 옵션으로 유지한다.
+- Daily의 `_md_to_html_email`은 호환 alias로 유지하고 CIO, Insight, Market Narrative의
+  불필요한 Daily 모듈 의존을 제거했다.
+- frontmatter의 delimiter·개행, Daily metadata 전체, Obsidian backlink 제거, Gmail
+  heading/table/bold 스타일과 표 셀 whitespace를 snapshot 성격의 테스트로 고정했다.
+
+다음 4차 구현은 기존 `cloud_client` 위에 파생 리포트 요청/결과 metadata 경계를 두되
+provider, model, prompt, timeout과 재시도 횟수를 그대로 유지한다.

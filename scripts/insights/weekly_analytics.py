@@ -28,6 +28,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.json_utils import parse_json_list as _jlist
+from src.report_rendering import markdown_table_cell
 
 DB_PATH = PROJECT_ROOT / "data" / "macro_knowledge.db"
 
@@ -187,7 +188,10 @@ def threshold_reference_table(top_n: int = 12) -> str:
     for metric, buckets in list(data.items())[:top_n]:
         bull = "; ".join(buckets["bull"]) if buckets["bull"] else "-"
         bear = "; ".join(buckets["bear"]) if buckets["bear"] else "-"
-        lines.append(f"| {metric} | {bull.replace('|','\\|')} | {bear.replace('|','\\|')} |")
+        lines.append(
+            f"| {metric} | {markdown_table_cell(bull, flatten=False, strip=False)} "
+            f"| {markdown_table_cell(bear, flatten=False, strip=False)} |"
+        )
     return "\n".join(lines)
 
 

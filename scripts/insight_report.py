@@ -24,6 +24,7 @@ from src.insights.knowledge_graph import (
     summarize_network,
 )
 from src.email_delivery import EmailAttachment, send_multipart_email
+from src.report_rendering import markdown_to_email_html
 
 
 def build_report(no_llm: bool = False, expiry: str = "timebox") -> tuple[str, dict]:
@@ -164,7 +165,7 @@ def build_report(no_llm: bool = False, expiry: str = "timebox") -> tuple[str, di
 def send_email_with_visuals(md: str, summary: dict, subject: str) -> None:
     """마크다운 → HTML + 대시보드 PNG inline + pyvis/plotly HTML 첨부 발송."""
     from src.config import settings
-    from src.report_generator import _md_to_html_email, send_email_report, _resolve_recipients  # noqa: F401 (fallback)
+    from src.report_generator import send_email_report, _resolve_recipients  # noqa: F401 (fallback)
 
     user = settings.email.user
     pwd = settings.email.password
@@ -175,7 +176,7 @@ def send_email_with_visuals(md: str, summary: dict, subject: str) -> None:
         print("SMTP 설정 부족 — 리포트만 생성, 메일 미발송")
         return
 
-    html_body = _md_to_html_email(md)
+    html_body = markdown_to_email_html(md)
     attachments = [
         EmailAttachment(Path(summary[key]), fname)
         for key, fname in (("pyvis_path", "knowledge_graph.html"),

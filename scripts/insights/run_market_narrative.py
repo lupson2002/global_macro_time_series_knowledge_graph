@@ -5,7 +5,7 @@ run_market_narrative.py — 마켓 내러티브 서치 엔진 리포트 실행�
 market_narrative.generate_narrative_report() 로 내러티브 리포트를 생성한 뒤:
   1. `reports/narrative/market_narrative_YYYY-MM-DD.md` 저장
   2. Obsidian Vault `Narrative_Reports/Market_Narrative_YYYY-MM-DD.md` 동기화 (frontmatter)
-  3. Gmail HTML 메일 발송 (기존 `_md_to_html_email` 재사용)
+  3. Gmail HTML 메일 발송 (공통 `markdown_to_email_html` 재사용)
 
 스케줄: systemd timer — 매주 수요일/일요일 06:00 KST (Persistent=true 로 부팅 시 누락분 자동 실행).
 
@@ -31,7 +31,8 @@ from src.config import settings  # noqa: E402
 
 # 같은 디렉터리 코어 엔진 (sys.path[0] = scripts/insights)
 from market_narrative import generate_narrative_report, INSIGHT_MODEL  # noqa: E402
-from src.report_generator import _md_to_html_email, _resolve_recipients  # noqa: E402
+from src.report_generator import _resolve_recipients  # noqa: E402
+from src.report_rendering import markdown_to_email_html, render_frontmatter  # noqa: E402
 
 REPORTS_DIR = PROJECT_ROOT / "reports" / "narrative"
 OBSIDIAN_DIR = PROJECT_ROOT / "obsidian_vault" / "Narrative_Reports"
@@ -44,16 +45,11 @@ def _kst_iso() -> str:
 
 
 def _frontmatter(today: str, model: str, source_count: int = 0) -> str:
-    return (
-        "---\n"
-        f"date: {today}\n"
-        "type: market_narrative\n"
-        f"model: {model}\n"
-        "provider: nim\n"
-        f"generated_at: {_kst_iso()}\n"
-        "tags: [macro, narrative, market_bottleneck]\n"
-        "---\n\n"
-    )
+    return render_frontmatter((
+        ("date", today), ("type", "market_narrative"), ("model", model),
+        ("provider", "nim"), ("generated_at", _kst_iso()),
+        ("tags", "[macro, narrative, market_bottleneck]"),
+    ))
 
 
 def save_outputs(md: str, today: str) -> tuple[Path, Path]:
@@ -80,7 +76,7 @@ def send_narrative_email(md: str, subject: str) -> None:
         print("[INFO] Gmail 설정 없음 — 메일 스킵")
         return
 
-    html_body = _md_to_html_email(md)
+    html_body = markdown_to_email_html(md)
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"] = user

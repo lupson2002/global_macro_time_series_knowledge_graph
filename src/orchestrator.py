@@ -18,6 +18,7 @@ import logging
 from src.config import settings
 from src.email_delivery import EmailAttachment, send_multipart_email
 from src.json_utils import parse_json_list as _parse_json_list
+from src.report_rendering import markdown_table_cell, markdown_to_email_html, render_frontmatter
 
 logger = logging.getLogger(__name__)
 
@@ -346,9 +347,6 @@ def _render_cio_visuals(viz_json: dict, out_dir: Path) -> dict:
 
 def _viz_json_to_markdown(viz_json: dict) -> str:
     """viz_json(allocation/conflicts) → 보기 좋은 마크다운 표. 셀 내 '|' 이스케이프."""
-    def esc(v) -> str:
-        return str(v or "").replace("|", "\\|").replace("\n", " ").strip()
-
     lines: list[str] = []
     alloc = viz_json.get("allocation", [])
     if alloc:
@@ -356,7 +354,7 @@ def _viz_json_to_markdown(viz_json: dict) -> str:
         lines.append("| 자산 | 비중 | 핵심 근거 |")
         lines.append("|------|----:|------|")
         for a in alloc:
-            lines.append(f"| {esc(a.get('asset'))} | {esc(a.get('weight'))}% | {esc(a.get('rationale'))} |")
+            lines.append(f"| {markdown_table_cell(a.get('asset'))} | {markdown_table_cell(a.get('weight'))}% | {markdown_table_cell(a.get('rationale'))} |")
         lines.append("")
 
     conflicts = viz_json.get("conflicts", [])
@@ -366,8 +364,8 @@ def _viz_json_to_markdown(viz_json: dict) -> str:
         lines.append("|----------|---------|---------|---------|---------|")
         for c in conflicts:
             lines.append(
-                f"| {esc(c.get('topic'))} | {esc(c.get('long_guru'))} | {esc(c.get('long_view'))} "
-                f"| {esc(c.get('short_guru'))} | {esc(c.get('short_view'))} |"
+                f"| {markdown_table_cell(c.get('topic'))} | {markdown_table_cell(c.get('long_guru'))} | {markdown_table_cell(c.get('long_view'))} "
+                f"| {markdown_table_cell(c.get('short_guru'))} | {markdown_table_cell(c.get('short_view'))} |"
             )
         lines.append("")
     return "\n".join(lines)
@@ -436,15 +434,10 @@ def save_report_to_vault(report_content: str) -> Path:
     
     report_file = reports_folder / f"Grand_Report_{today_str}.md"
     
-    metadata_header = f"""---
-date: {today_str}
-type: grand_reasoning_report
-model: {TIER3_MODEL}
-provider: nim
-tags: [macro_strategy, global_macro, asset_allocation]
----
-
-"""
+    metadata_header = render_frontmatter((
+        ("date", today_str), ("type", "grand_reasoning_report"), ("model", TIER3_MODEL),
+        ("provider", "nim"), ("tags", "[macro_strategy, global_macro, asset_allocation]"),
+    ))
     # 본문의 ```json 블록을 보기 좋은 마크다운 표로 교체(원본 JSON 제거).
     viz_json = _extract_viz_json(report_content)
     clean_content = _replace_json_block_with_tables(report_content, viz_json)
@@ -458,7 +451,7 @@ tags: [macro_strategy, global_macro, asset_allocation]
 # ---------------------------------------------------------------------------
 def _send_cio_email_with_visuals(subject: str, body_md: str, viz_paths: dict) -> None:
     """CIO 리포트 메일 — 본문(마크다운→HTML) + 시각화 HTML 첨부. 실패 시 plain 폴백."""
-    from src.report_generator import _md_to_html_email, _resolve_recipients
+    from src.report_generator import _resolve_recipients
 
     user = settings.email.user
     pwd = settings.email.password
@@ -469,7 +462,7 @@ def _send_cio_email_with_visuals(subject: str, body_md: str, viz_paths: dict) ->
     host = settings.email.smtp_host
     port = settings.email.smtp_port
 
-    html_body = _md_to_html_email(body_md)
+    html_body = markdown_to_email_html(body_md)
     attachments = [
         EmailAttachment(Path(viz_paths[key]), fname)
         for key, fname in [("pie", "cio_allocation_pie.html"), ("bar", "cio_sentiment_bar.html"),

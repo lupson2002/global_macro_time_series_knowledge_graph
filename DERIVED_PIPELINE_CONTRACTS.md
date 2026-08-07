@@ -23,7 +23,9 @@ characterization test로 고정한 안전 기준선이다. 이 단계에서는 �
    `src/email_delivery.py`가 MIME/SMTP transport를 담당하고 파이프라인별 skip·경고·fallback
    정책은 기존 진입점에 유지했다.
 3. frontmatter, Markdown 표, HTML envelope 등 렌더링 경계를 통합한다. 파이프라인별 본문
-   형식은 그대로 두고 공통 escape/조립 기능만 이동한다.
+   형식은 그대로 두고 공통 escape/조립 기능만 이동한다. **15단계 완료:**
+   `src/report_rendering.py`로 frontmatter envelope, table-cell escape, Gmail HTML 렌더링을
+   이동했고 보고서별 필드·순서·태그는 각 호출부에 유지했다.
 4. 기존 cloud client 위에 파생 리포트용 요청/결과 metadata 경계를 둔다. 모델, prompt,
    재시도 횟수는 이 단계에서 변경하지 않는다.
 5. 마지막으로 네 진입점을 순수 계산과 외부 부작용을 연결하는 얇은 orchestration으로 줄인다.

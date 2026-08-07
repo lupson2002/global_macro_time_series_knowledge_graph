@@ -14,11 +14,11 @@ import sqlite3
 import datetime
 import time
 from pathlib import Path
-import markdown as _md
 import re as _re
 from src.config import settings
 from src.email_delivery import send_multipart_email
 from src.json_utils import parse_json_list
+from src.report_rendering import markdown_to_email_html as _md_to_html_email, render_frontmatter
 
 # src.llm_router 등 src.* 패키지 import 를 위해 프로젝트 루트를 sys.path 에 추가
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -340,36 +340,6 @@ def format_feed_payload(reports: list) -> str:
 
     return "\n".join(payload)
 
-def _md_to_html_email(md_content: str) -> str:
-    """MD → HTML 변환 (Gmail 렌더링용). Obsidian 백링크 [[X]] → X 로 strip.
-
-    Gmail은 <style> 무시 → 인라인 스타일 적용. 표/헤딩/굵게/인용 렌더.
-    """
-    # 백링크 strip: [[내부 텍스트]] → 내부 텍스트 (Obsidian 전용 문법, 메일에선 노이즈)
-    cleaned = _re.sub(r"\[\[([^\]]+)\]\]", r"\1", md_content)
-    html_body = _md.markdown(
-        cleaned,
-        extensions=["tables", "sane_lists", "nl2br"],
-        output_format="html",
-    )
-    # Gmail 호환 인라인 스타일 — 외부 CSS 미지원 대응
-    style = """
-    <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;
-                font-size:14px;line-height:1.6;color:#1f2329;max-width:720px;margin:0 auto;">
-    """
-    styled = _re.sub(r"<h1", "<h1 style='font-size:20px;border-bottom:2px solid #d0d7de;padding-bottom:6px;margin:18px 0 12px;'", html_body)
-    styled = _re.sub(r"<h2", "<h2 style='font-size:16px;color:#0969da;border-left:4px solid #0969da;padding-left:8px;margin:18px 0 10px;'", styled)
-    styled = _re.sub(r"<h3", "<h3 style='font-size:14px;color:#1f2328;margin:14px 0 8px;'", styled)
-    styled = _re.sub(r"<table", "<table style='border-collapse:collapse;width:100%;font-size:13px;margin:12px 0;'", styled)
-    styled = _re.sub(r"<th", "<th style='border:1px solid #d0d7de;background:#f6f8fa;padding:6px 8px;text-align:left;'", styled)
-    styled = _re.sub(r"<td", "<td style='border:1px solid #d0d7de;padding:6px 8px;vertical-align:top;'", styled)
-    styled = _re.sub(r"<blockquote",
-                     "<blockquote style='border-left:4px solid #0969da;background:#f6f8fa;margin:10px 0;padding:8px 12px;color:#57606a;'",
-                     styled)
-    styled = _re.sub(r"<strong", "<strong style='color:#cf222e;'", styled)
-    styled = _re.sub(r"<hr", "<hr style='border:none;border-top:1px solid #d0d7de;margin:16px 0;'", styled)
-    return style + styled + "</div>"
-
 def _resolve_recipients() -> list[str]:
     """이메일 수신자 목록 — EMAIL_TO(콤마 구분 복수 수신자) 우선, 없으면 GMAIL_USER 자기발송."""
     return list(settings.email.recipients)
@@ -411,17 +381,11 @@ def send_email_report(subject: str, body_content: str):
 
 def _build_frontmatter(today_str: str, model: str, source_count: int, kst_iso: str) -> str:
     """👑 [Ver 4.3] Daily 리포트 YAML frontmatter — 결정론적 생성(MD 파일용)."""
-    return (
-        "---\n"
-        f"date: {today_str}\n"
-        "type: daily_macro_synthesis\n"
-        f"model: {model}\n"
-        "provider: nim\n"
-        f"source_videos: {source_count}\n"
-        f"generated_at: {kst_iso}\n"
-        "tags: [macro, daily_synthesis]\n"
-        "---\n\n"
-    )
+    return render_frontmatter((
+        ("date", today_str), ("type", "daily_macro_synthesis"), ("model", model),
+        ("provider", "nim"), ("source_videos", source_count), ("generated_at", kst_iso),
+        ("tags", "[macro, daily_synthesis]"),
+    ))
 
 
 def _build_evidence_section(reports: list, top_k: int = 8, tr_map: dict = None) -> str:
