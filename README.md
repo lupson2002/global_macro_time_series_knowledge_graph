@@ -193,6 +193,9 @@ LLM 호출은 공통 provider 실행 계층이 재시도와 fallback을 한 번�
 
 ## 테스트
 
+리팩터링 변경 순서와 보존 계약은 [`REFACTORING_ROADMAP.md`](REFACTORING_ROADMAP.md)를
+기준으로 하며, `scripts/audit_refactoring.py`로 모듈 크기와 결합도 지표를 재측정할 수 있습니다.
+
 ```bash
 .venv/bin/python -m unittest discover -s tests -v
 .venv/bin/python -m compileall -q main.py src scripts publish_all_blogs.py tests

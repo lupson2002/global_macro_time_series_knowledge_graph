@@ -1,0 +1,69 @@
+# Refactoring Roadmap
+
+> Baseline: `cc28423`, 2026-08-07. 이 문서는 동작 변경 전에 작성한 위험 지도다.
+
+## 성공 조건
+
+- 전체 transcript를 절삭 없이 LLM에 전달한다.
+- video ID 멱등성 및 non-macro skip 기록을 보존한다.
+- Markdown 선저장, SQLite 완료 마커 순서를 보존한다.
+- SQLite 1,628건을 기준으로 Markdown/LanceDB 누락이 0건이어야 한다.
+- MCP SQLite 연결은 read-only이며 SQL allow-list를 유지한다.
+- 단계별로 전체 테스트와 저장소 reconciliation을 통과한 뒤 커밋한다.
+
+## 측정 방법
+
+`scripts/audit_refactoring.py`는 외부 패키지 없이 AST를 읽어 모듈 LOC, 내부 import 수,
+최대 함수 길이와 decision point 수를 계산한다.
+
+```bash
+.venv/bin/python scripts/audit_refactoring.py
+.venv/bin/python scripts/audit_refactoring.py --json
+```
+
+점수는 절대 품질 등급이 아니라 변경 순서를 비교하기 위한 휴리스틱이다. 생성 코드와 긴
+상수도 LOC에 포함되므로 수치만으로 자동 분리하지 않는다.
+
+## 현재 위험 지도
+
+| 영역 | 관측값 | 위험 | 판단 |
+|---|---:|---|---|
+| `main.py::main` | 192줄, 32 decision points | 높음 | CLI 파싱·대상 수집·backfill·실행 요약이 결합됨 |
+| `SQLiteExporter.export_data` | 144줄 | 매우 높음 | 원본 저장과 LanceDB projection이 연결되므로 먼저 characterization test 보강 |
+| `ObsidianMDExporter.export_markdown` | 124줄 | 매우 높음 | 파일명·YAML·근거 렌더링 계약이 한 함수에 집중됨 |
+| `PipelineService.process` | 94줄 | 중간 | typed 결과 테스트가 있어 작은 단계 추출에 적합 |
+| `LocalLLMClient` parse 경로 | 각 79줄 | 높음 | 복구 호출·soft validation·metadata override 순서가 중요 |
+| `report_generator.py` | 839줄 | 높음 | 렌더링 함수가 크지만 핵심 ingestion과 분리되어 후순위 가능 |
+| `orchestrator.py` | 562줄, 내부 import 7개 | 높음 | MCP·시각화·메일을 함께 조정하며 직접 테스트가 부족함 |
+| `telegram_bot.py` | 483줄 | 중간 | 도구 schema 상수 비중이 크므로 LOC만으로 분리하지 않음 |
+
+## 테스트 보호 수준
+
+강하게 보호된 경계는 pipeline 결과 상태, 전체 transcript 전달, provider failover,
+SQLite/Markdown round-trip, MCP 보안, reconciliation이다. 직접 characterization test가
+ready to add인 영역은 `main.py`의 대상 수집/backfill 조립, report 생성, CIO orchestrator,
+Telegram tool loop, insight 파이프라인이다.
+
+## 실행 순서
+
+1. **CLI 조립 분리** — `main.py`에서 argument parser, target discovery, backfill runner를
+   순수 함수로 추출한다. 기존 CLI 인자와 종료 코드는 유지하고 characterization test를 먼저 추가한다.
+2. **도메인 타입 도입** — extraction dict의 metadata/graph/view 접근을 typed boundary로 감싼다.
+   SQLite·Markdown·LanceDB가 같은 필드 해석을 공유하게 하되 저장 schema는 바꾸지 않는다.
+3. **저장소 경계 분리** — SQLite 원본 저장과 Markdown/LanceDB projection adapter를 분리한다.
+   projection 부분 성공 상태와 재시도 계약을 먼저 테스트한다.
+4. **LLM 분석 단계 분리** — sanitize, parse recovery, validation, metadata override를 독립 함수로
+   이동한다. provider 호출 횟수와 전체 transcript 계약을 고정한다.
+5. **파생 파이프라인 정리** — report/CIO/Telegram/insight의 중복 메일·렌더링·LLM helper를 통합한다.
+   각 진입점의 출력 snapshot test를 먼저 확보한다.
+6. **구조화 실행 기록** — 기존 콘솔 출력을 유지하면서 run/video별 JSON event sink를 추가한다.
+
+각 항목은 별도 커밋으로 제한한다. schema migration, provider 변경, 고아 vector 삭제 및 출력
+형식 재설계는 이 리팩터링과 함께 수행하지 않는다.
+
+## 첫 구현 파동의 승인 기준
+
+- `main.py::main`이 CLI wiring과 결과 집계만 담당한다.
+- target discovery/backfill 함수는 임시 디렉터리와 mock으로 네트워크 없이 검증된다.
+- 기존 CLI 옵션, 처리 순서, 지연 적용 조건, 종료 코드가 동일하다.
+- 전체 테스트, compileall, read-only reconciliation 결과가 기준선과 동일하다.

@@ -141,6 +141,8 @@ TurboVec server와 `.tvim` 인덱스는 현재 아키텍처에 존재하지 않�
 
 ## 9. Known refactoring targets
 
+측정된 위험도와 단계별 승인 기준은 `REFACTORING_ROADMAP.md`를 기준으로 한다.
+
 - 스키마를 도메인 모듈로 분리
 - 고아 projection의 검토·삭제 정책 추가
 - 실행별 구조화 JSON 로그와 영속 상태 추가
