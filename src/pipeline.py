@@ -103,6 +103,7 @@ class PipelineService:
         llm_client,
         sqlite_exporter,
         obsidian_exporter,
+        vector_projection=None,
         ingest: Callable[[str], str] = get_youtube_transcript,
         relevance_check: Callable[[dict], bool] = is_macro_relevant,
         sleep: Callable[[float], None] = time.sleep,
@@ -111,6 +112,11 @@ class PipelineService:
         self.llm_client = llm_client
         self.sqlite_exporter = sqlite_exporter
         self.obsidian_exporter = obsidian_exporter
+        if vector_projection is None:
+            from src.projections import LanceDbProjection
+
+            vector_projection = LanceDbProjection()
+        self.vector_projection = vector_projection
         self.ingest = ingest
         self.relevance_check = relevance_check
         self.sleep = sleep
@@ -202,10 +208,19 @@ class PipelineService:
                 warnings=("markdown_saved_database_pending",),
             )
 
+        warnings: tuple[str, ...] = ()
+        try:
+            self.vector_projection.project(extracted)
+        except Exception as exc:  # noqa: BLE001 - source is committed; projection is repairable
+            warnings = (
+                f"vector_projection_pending: {type(exc).__name__}: {exc}",
+            )
+
         return PipelineResult(
             target,
             PipelineStatus.SUCCESS,
             PipelineStage.STORAGE,
             transcript_chars=len(transcript),
             markdown_path=markdown_path,
+            warnings=warnings,
         )

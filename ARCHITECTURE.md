@@ -20,7 +20,10 @@ Discovery -> Ingestion -> Analysis -> Relevance gate -> Persistence -> Derived p
 5. `LocalLLMClient.analyze_transcript()`가 원문 전체를 절삭 없이 single-shot으로 전달한다.
 6. JSON을 sanitize/parse하고 Pydantic soft validation과 Obsidian backlink 보정을 적용한다.
 7. `is_macro_relevant()`가 티커, 전술 신호, 비중립 점수를 기준으로 저장 여부를 결정한다.
-8. Obsidian Markdown을 먼저 기록하고 SQLite를 완료 마커로 저장한다. Markdown 실패 시 DB에 완료 표시를 남기지 않아 다음 실행에서 재시도할 수 있다.
+8. Obsidian Markdown을 먼저 기록하고 SQLite를 완료 마커로 저장한 다음
+   `LanceDbProjection`이 검색 projection을 갱신한다. Markdown 실패 시 DB에 완료 표시를 남기지
+   않아 다음 실행에서 재시도할 수 있다. LanceDB projection 실패는 원본 성공을 되돌리지 않고
+   `vector_projection_pending` 경고로 남기며 reconciliation으로 복구한다.
 
 DB→Markdown backfill은 `run_backfill()`로 분리되어 있으며 기존 파일의 underscore 포함
 YouTube ID를 날짜 기반 파일명 정규식으로 판별한다.
@@ -90,7 +93,9 @@ read-only domain boundary다. malformed section은 빈 mapping으로 격리하�
 
 ### LanceDB: search projection
 
-`src/lancedb_store.py`가 `data/lancedb_store/macro_vectors`를 관리한다.
+`src.projections.LanceDbProjection`이 domain view를 검색 문서로 변환하고,
+`src/lancedb_store.py`가 `data/lancedb_store/macro_vectors`를 관리한다. `SQLiteExporter`는
+LanceDB를 import하거나 갱신하지 않는다.
 
 - `upsert_document()`
 - `search_hybrid()`
@@ -132,7 +137,8 @@ TurboVec server와 `.tvim` 인덱스는 현재 아키텍처에 존재하지 않�
 - YouTube IP block 패턴은 `ABORTED`로 반환되어 남은 큐를 중단한다.
 - Markdown 저장 실패 시 SQLite 저장을 실행하지 않는다. SQLite 저장 실패 시 이미 생성된 Markdown 경로와 `markdown_saved_database_pending` 경고를 결과에 남긴다.
 - 영상 또는 backfill 실패가 하나 이상이면 `main.py`는 1로 종료한다.
-- SQLite, Obsidian, LanceDB는 하나의 ACID transaction으로 묶이지 않는다.
+- SQLite, Obsidian, LanceDB는 하나의 ACID transaction으로 묶이지 않는다. 저장 순서는
+  Markdown → SQLite → LanceDB이며 마지막 projection 실패는 성공 결과의 경고로 노출된다.
 - 대형 transcript는 절삭하지 않으며 provider 한계 시 해당 영상 분석이 실패한다.
 
 ## 8. Refactoring invariants

@@ -29,12 +29,14 @@ class PipelineServiceTests(unittest.TestCase):
             llm.analyze_transcript.return_value = relevant_view()
         sqlite_exporter = Mock()
         obsidian_exporter = Mock()
+        vector_projection = Mock()
         obsidian_exporter.export_markdown.return_value = Path("view.md")
         service = PipelineService(
             db_path=str(db_path),
             llm_client=llm,
             sqlite_exporter=sqlite_exporter,
             obsidian_exporter=obsidian_exporter,
+            vector_projection=vector_projection,
             ingest=ingest or (lambda _: "full transcript"),
             relevance_check=lambda _: relevant,
         )
@@ -73,6 +75,7 @@ class PipelineServiceTests(unittest.TestCase):
         self.assertEqual(result.markdown_path, Path("view.md"))
         obsidian_exporter.export_markdown.assert_called_once()
         sqlite_exporter.export_data.assert_called_once()
+        service.vector_projection.project.assert_called_once()
 
     def test_irrelevant_view_is_persisted_as_skip(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -88,6 +91,7 @@ class PipelineServiceTests(unittest.TestCase):
             "abcdefghijk", reason="not_macro_relevant"
         )
         obsidian_exporter.export_markdown.assert_not_called()
+        service.vector_projection.project.assert_not_called()
 
     def test_ip_block_aborts_queue_at_ingestion_stage(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -112,6 +116,7 @@ class PipelineServiceTests(unittest.TestCase):
         )
         self.assertIn("RuntimeError: provider offline", result.message)
         sqlite_exporter.export_data.assert_not_called()
+        service.vector_projection.project.assert_not_called()
         obsidian_exporter.export_markdown.assert_not_called()
 
     def test_markdown_failure_keeps_database_uncommitted(self):
@@ -126,6 +131,7 @@ class PipelineServiceTests(unittest.TestCase):
             (PipelineStatus.FAILED, PipelineStage.STORAGE),
         )
         sqlite_exporter.export_data.assert_not_called()
+        service.vector_projection.project.assert_not_called()
 
     def test_database_failure_reports_partial_markdown_artifact_for_retry(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -140,6 +146,40 @@ class PipelineServiceTests(unittest.TestCase):
         )
         self.assertEqual(result.markdown_path, Path("view.md"))
         self.assertEqual(result.warnings, ("markdown_saved_database_pending",))
+        service.vector_projection.project.assert_not_called()
+
+    def test_storage_adapters_run_in_markdown_sqlite_vector_order(self):
+        with tempfile.TemporaryDirectory() as directory:
+            service, _, sqlite_exporter, obsidian_exporter = self.make_service(
+                Path(directory) / "missing.db"
+            )
+            events = []
+            obsidian_exporter.export_markdown.side_effect = lambda _: (
+                events.append("markdown") or Path("view.md")
+            )
+            sqlite_exporter.export_data.side_effect = lambda _: events.append("sqlite")
+            service.vector_projection.project.side_effect = lambda _: events.append("vector")
+
+            result = service.process(VideoTarget("abcdefghijk", "Channel"))
+
+        self.assertEqual(result.status, PipelineStatus.SUCCESS)
+        self.assertEqual(events, ["markdown", "sqlite", "vector"])
+
+    def test_vector_failure_keeps_source_success_and_reports_pending_projection(self):
+        with tempfile.TemporaryDirectory() as directory:
+            service, _, sqlite_exporter, _ = self.make_service(
+                Path(directory) / "missing.db"
+            )
+            service.vector_projection.project.side_effect = RuntimeError("offline")
+
+            result = service.process(VideoTarget("abcdefghijk", "Channel"))
+
+        self.assertEqual(result.status, PipelineStatus.SUCCESS)
+        sqlite_exporter.export_data.assert_called_once()
+        self.assertEqual(
+            result.warnings,
+            ("vector_projection_pending: RuntimeError: offline",),
+        )
 
     def test_configured_delays_apply_only_after_prior_work(self):
         with tempfile.TemporaryDirectory() as directory:

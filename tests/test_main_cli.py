@@ -7,6 +7,7 @@ from unittest.mock import Mock, call, patch
 import main as pipeline_cli
 from main import build_parser, collect_video_targets, run_backfill
 from src.pipeline import PipelineResult, PipelineStage, PipelineStatus, VideoTarget
+from src.projections import LanceDbProjection
 
 
 class MainCliCharacterizationTests(unittest.TestCase):
@@ -19,6 +20,25 @@ class MainCliCharacterizationTests(unittest.TestCase):
         self.assertEqual(args.tiers, "all")
         self.assertEqual(args.max_videos, 0)
         self.assertFalse(args.overwrite)
+
+    def test_main_wires_an_explicit_lancedb_projection(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(
+            pipeline_cli, "PipelineService"
+        ) as service_class, patch.object(pipeline_cli, "LocalLLMClient"), patch.object(
+            pipeline_cli, "SQLiteExporter"
+        ), patch.object(pipeline_cli, "ObsidianMDExporter"):
+            exit_code = pipeline_cli.main(
+                [
+                    "--db_path",
+                    str(Path(directory) / "macro.db"),
+                    "--vault_dir",
+                    str(Path(directory) / "vault"),
+                ]
+            )
+
+        self.assertEqual(exit_code, 0)
+        projection = service_class.call_args.kwargs["vector_projection"]
+        self.assertIsInstance(projection, LanceDbProjection)
 
     def test_target_collection_preserves_manual_priority_and_deduplicates(self):
         args = Namespace(

@@ -298,14 +298,6 @@ class SQLiteExporter:
 
             conn.commit()
 
-            # 👑 [Ver 4.8] 시맨틱 벡터 → LanceDB upsert (TurboVec 대체).
-            # 실패해도 비파괴 (SQLite 가 진실 원본).
-            try:
-                from src import lancedb_store
-                lancedb_store.upsert_document(**view.vector_document())
-            except Exception as vec_err:
-                print(f"[WARN] LanceDB upsert failed for {video_id}: {vec_err}")
-
         except Exception as e:
             conn.rollback()
             raise RuntimeError(f"Database insertion failed: {e}")

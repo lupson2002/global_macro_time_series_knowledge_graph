@@ -3,10 +3,8 @@ import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 from src.exporter import ObsidianMDExporter, SQLiteExporter, _load_db_report_as_schema
-from src.domain import MacroView
 
 from helpers import macro_view
 
@@ -42,8 +40,7 @@ class SQLiteExporterTests(unittest.TestCase):
             db = Path(d) / "macro.db"
             exporter = SQLiteExporter(str(db))
             first = macro_view()
-            with patch("src.lancedb_store.upsert_document"):
-                exporter.export_data(first)
+            exporter.export_data(first)
             with sqlite3.connect(db) as con:
                 con.execute(
                     "UPDATE reports SET created_at='2020-01-01 00:00:00' WHERE video_id=?",
@@ -53,8 +50,7 @@ class SQLiteExporterTests(unittest.TestCase):
             second = macro_view()
             second["view_details"]["core_thesis"] = "Updated thesis"
             second["graph_nodes"]["macro_themes"] = ["[[Liquidity]]"]
-            with patch("src.lancedb_store.upsert_document"):
-                exporter.export_data(second)
+            exporter.export_data(second)
             with sqlite3.connect(db) as con:
                 report = con.execute(
                     "SELECT core_thesis, created_at FROM reports WHERE video_id=?",
@@ -72,23 +68,12 @@ class SQLiteExporterTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             db = Path(d) / "macro.db"
             exporter = SQLiteExporter(str(db))
-            with patch("src.lancedb_store.upsert_document"):
-                exporter.export_data(macro_view())
+            exporter.export_data(macro_view())
             rows = list(_load_db_report_as_schema(str(db)))
             self.assertEqual(len(rows), 1)
             self.assertEqual(rows[0]["view_details"]["conditional_catalysts"], ["CPI cools"])
             self.assertEqual(rows[0]["causal_chain"], ["CPI down", "Yields down", "Bonds up"])
             self.assertEqual(rows[0]["quant_signals"]["view_time_horizon"], "Months")
-
-    def test_sqlite_export_uses_canonical_vector_projection(self):
-        with tempfile.TemporaryDirectory() as directory:
-            data = macro_view()
-            exporter = SQLiteExporter(str(Path(directory) / "macro.db"))
-            with patch("src.lancedb_store.upsert_document") as upsert:
-                exporter.export_data(data)
-
-        upsert.assert_called_once_with(**MacroView.from_mapping(data).vector_document())
-
 
 class ObsidianExporterTests(unittest.TestCase):
     def test_markdown_preserves_backlinks_and_escapes_yaml(self):

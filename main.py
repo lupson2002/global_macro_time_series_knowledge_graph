@@ -33,6 +33,7 @@ from src.pipeline import (
     check_processed,
     is_macro_relevant,
 )
+from src.projections import LanceDbProjection
 
 # 👑 [Ver 3.1] 76 매크로 채널 풀 (요건 2: Backfill Roster)
 # Stage 2 is now deepseek-ai/deepseek-v4-flash via nvidia-api-proxy (localhost:8000).
@@ -228,6 +229,7 @@ def main(argv: list[str] | None = None) -> int:
         llm_client=client,
         sqlite_exporter=sqlite_exporter,
         obsidian_exporter=obsidian_exporter,
+        vector_projection=LanceDbProjection(),
     )
 
     unique_targets = collect_video_targets(args)

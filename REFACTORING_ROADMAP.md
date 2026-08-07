@@ -87,3 +87,14 @@ Telegram tool loop, insight 파이프라인이다.
 - `SQLiteExporter.export_data`의 decision points는 19에서 9, 위험 점수는 12에서 11로 감소했다.
 - 엄격한 Pydantic `MacroViewSchema`는 LLM 검증에 유지해 legacy 저장 호환성과 역할을 분리했다.
 - SQLite schema, Markdown 형식, LanceDB schema는 변경하지 않았다.
+
+## 세 번째 구현 파동 결과
+
+- `SQLiteExporter`에서 LanceDB import와 암묵적 upsert side effect를 제거했다.
+- `LanceDbProjection` adapter를 추가하고 `PipelineService`에 명시적으로 주입했다.
+- 저장 순서를 Markdown → SQLite → LanceDB로 characterization test에 고정했다.
+- Markdown 실패 시 DB 미완료, SQLite 실패 시 vector 미실행 계약을 유지했다.
+- LanceDB 실패는 원본 성공을 유지하며 `vector_projection_pending` 경고와 reconciliation
+  복구 경로를 제공한다.
+- `src/exporter.py` 위험 점수는 11에서 9로 감소했고 최대 위험 함수가 원본 upsert에서
+  schema initialization으로 이동했다.
