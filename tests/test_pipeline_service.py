@@ -1,9 +1,16 @@
 import tempfile
 import unittest
+import sys
 from pathlib import Path
 from unittest.mock import Mock, call, patch
 
-from src.pipeline import PipelineService, PipelineStage, PipelineStatus, VideoTarget
+from src.pipeline import (
+    PipelineResult,
+    PipelineService,
+    PipelineStage,
+    PipelineStatus,
+    VideoTarget,
+)
 
 
 def relevant_view(video_id="abcdefghijk"):
@@ -145,3 +152,34 @@ class PipelineServiceTests(unittest.TestCase):
                 target, overwrite=True, apply_delays=True, ingest_delay=2, llm_delay=3
             )
             self.assertEqual(service.sleep.call_args_list, [call(2), call(3)])
+
+
+class PipelineCliExitTests(unittest.TestCase):
+    def test_video_failure_returns_nonzero_process_status(self):
+        import main as pipeline_cli
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = VideoTarget("abcdefghijk", "Channel")
+            failed = PipelineResult(
+                target,
+                PipelineStatus.FAILED,
+                PipelineStage.ANALYSIS,
+                "provider offline",
+            )
+            service = Mock()
+            service.process.return_value = failed
+            argv = [
+                "main.py",
+                "--video_id",
+                target.video_id,
+                "--db_path",
+                str(root / "macro.db"),
+                "--vault_dir",
+                str(root / "vault"),
+            ]
+            with patch.object(sys, "argv", argv), patch.object(
+                pipeline_cli, "PipelineService", return_value=service
+            ):
+                exit_code = pipeline_cli.main()
+        self.assertEqual(exit_code, 1)

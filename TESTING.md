@@ -18,6 +18,7 @@ The suite uses temporary directories and mocks. It does not require network acce
 - `test_local_llm_client.py`: full single-shot delivery for a transcript larger than the former truncation threshold.
 - `test_pipeline_contracts.py`: macro relevance rules, skipped-video idempotency, channel tier filtering.
 - `test_pipeline_service.py`: full-transcript handoff, typed stage failures, IP-block abort, delay policy and retryable partial storage.
+- `test_reconciliation.py`: drift planning, read-only audit, explicit apply guard, backup integrity and missing-only repair.
 - `test_storage.py`: legacy SQLite migration, upsert semantics, JSON round-trip, Obsidian YAML/backlinks.
 - `test_mcp_security.py`: SQL allow-list, recursive CTE rejection, result cap, SQLite read-only URI.
 - `test_llm_providers.py`: provider retry/failover limits, empty response handling and attempt metadata.

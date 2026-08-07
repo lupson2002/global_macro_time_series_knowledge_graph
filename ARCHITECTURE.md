@@ -91,6 +91,10 @@ configured Cerebras/Groq providers (round-robin/failover)
 
 TurboVec server와 `.tvim` 인덱스는 현재 아키텍처에 존재하지 않는다.
 
+### Reconciliation
+
+`src.reconciliation`은 SQLite report ID를 기준 집합으로 삼아 Markdown/LanceDB의 누락과 고아 ID를 계산한다. `scripts/reconcile_storage.py`는 기본 read-only이며 `--apply --yes`일 때만 누락 projection을 생성한다. LanceDB ID 감사는 별도 프로세스와 시간 제한으로 격리되며 timeout 시 unavailable로 표시하고 전체 적용을 거부한다. `--markdown-only`는 vector 저장소를 열지 않는다. 적용 전 SQLite online backup API와 LanceDB 디렉터리 복사본을 `backups/reconciliation/<UTC timestamp>/`에 만들며, 고아 항목은 자동 삭제하지 않는다.
+
 ## 5. Derived pipelines
 
 | Pipeline | Input | Output |
@@ -117,7 +121,7 @@ TurboVec server와 `.tvim` 인덱스는 현재 아키텍처에 존재하지 않�
 - 영상 단위 ingestion/LLM/export 실패는 CLI가 카운트하고 다음 영상으로 진행한다.
 - YouTube IP block 패턴은 `ABORTED`로 반환되어 남은 큐를 중단한다.
 - Markdown 저장 실패 시 SQLite 저장을 실행하지 않는다. SQLite 저장 실패 시 이미 생성된 Markdown 경로와 `markdown_saved_database_pending` 경고를 결과에 남긴다.
-- 일부 영상이 실패해도 `main.py`는 0으로 종료할 수 있어 wrapper에서 SUCCESS로 표시될 수 있다.
+- 영상 또는 backfill 실패가 하나 이상이면 `main.py`는 1로 종료한다.
 - SQLite, Obsidian, LanceDB는 하나의 ACID transaction으로 묶이지 않는다.
 - 대형 transcript는 절삭하지 않으며 provider 한계 시 해당 영상 분석이 실패한다.
 
@@ -138,7 +142,7 @@ TurboVec server와 `.tvim` 인덱스는 현재 아키텍처에 존재하지 않�
 ## 9. Known refactoring targets
 
 - 스키마를 도메인 모듈로 분리
-- 저장소 간 reconciliation/status 추가
-- partial success를 exit status와 구조화 로그로 표현
+- 고아 projection의 검토·삭제 정책 추가
+- 실행별 구조화 JSON 로그와 영속 상태 추가
 - 외부 API mock 기반 characterization test 확대
 - 중복된 email/Markdown/LLM 보조 로직 통합

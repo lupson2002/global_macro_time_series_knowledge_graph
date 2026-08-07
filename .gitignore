@@ -16,6 +16,7 @@ __pycache__/
 data/
 logs/
 reports/
+backups/
 obsidian_vault/
 blog_drafts/
 *.log

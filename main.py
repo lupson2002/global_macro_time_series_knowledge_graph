@@ -80,7 +80,7 @@ DEFAULT_CHANNELS = {
     "Yahoo_Finance": "UCxZG-dvg0cLQsgCln7DBHKw",
 }
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser(description="Global Macro Time-Series Knowledge Graph Pipeline (Ver 3.0)")
     parser.add_argument("--video_id", help="YouTube Video ID or comma-separated list of IDs")
     parser.add_argument("--channel_id", help="YouTube Channel ID or comma-separated list of IDs")
@@ -129,7 +129,7 @@ def main():
         obsidian_exporter = ObsidianMDExporter(str(vault_dir_path))
     except Exception as err:
         print(f"❌ Initialization failure: {err}")
-        sys.exit(1)
+        return 1
     pipeline = PipelineService(
         db_path=str(db_file_path),
         llm_client=client,
@@ -205,6 +205,7 @@ def main():
 
         backfilled = 0
         skipped = 0
+        backfill_failed = 0
         for schema in _load_db_report_as_schema(str(db_file_path)):
             vid = schema["metadata"]["video_id"]
             if vid in existing_videos:
@@ -215,11 +216,12 @@ def main():
                 backfilled += 1
                 tqdm.write(f"   ✓ Backfilled: {md_path.name}")
             except Exception as e:
+                backfill_failed += 1
                 tqdm.write(f"   ❌ Backfill failed for {vid}: {e}")
         print("=" * 60)
         print(f"🏁 Backfill done.  Exported: {backfilled}  Already-on-disk: {skipped}")
         print("=" * 60)
-        return
+        return 1 if backfill_failed else 0
 
     # Counters
     success_count = 0
@@ -269,6 +271,7 @@ def main():
     print("🏁 Pipeline run finished.")
     print(f"   Processed: {success_count} | Skipped: {skip_count} | Failed: {fail_count}")
     print("=" * 60)
+    return 1 if fail_count else 0
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

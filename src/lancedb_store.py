@@ -45,9 +45,10 @@ VECTOR_DIM = settings.embedding.dimension
 # ---------------------------------------------------------------------------
 # 연결 / 테이블 관리
 # ---------------------------------------------------------------------------
-def _connect() -> lancedb.DBConnection:
-    DB_DIR.mkdir(parents=True, exist_ok=True)
-    return lancedb.connect(str(DB_DIR))
+def _connect(db_dir: Path | None = None) -> lancedb.DBConnection:
+    target = db_dir or DB_DIR
+    target.mkdir(parents=True, exist_ok=True)
+    return lancedb.connect(str(target))
 
 
 def _table_schema() -> pa.Schema:
@@ -67,8 +68,8 @@ def _table_schema() -> pa.Schema:
     ])
 
 
-def _get_table(create: bool = True):
-    db = _connect()
+def _get_table(create: bool = True, db_dir: Path | None = None):
+    db = _connect(db_dir)
     if TABLE_NAME in db.table_names():
         return db.open_table(TABLE_NAME)
     if create:
@@ -130,10 +131,11 @@ def upsert_document(
     causal_chain: list | None = None,
     tracking_indicators: list | None = None,
     tactical_stance: list | None = None,
-) -> None:
+    db_dir: Path | None = None,
+) -> bool:
     """추출 결과를 LanceDB 에 upsert (video_id 키). 실패해도 비파괴(경고만)."""
     if not video_id:
-        return
+        return False
     try:
         row = {
             "video_id": video_id,
@@ -149,10 +151,12 @@ def upsert_document(
             "tracking_indicators_json": json.dumps(tracking_indicators or [], ensure_ascii=False),
             "tactical_stance_json": json.dumps(tactical_stance or [], ensure_ascii=False),
         }
-        table = _get_table()
+        table = _get_table(db_dir=db_dir)
         table.merge_insert("video_id").when_matched_update_all().when_not_matched_insert_all().execute([row])
+        return True
     except Exception as e:  # noqa: BLE001
         print(f"[WARN] LanceDB upsert 실패 {video_id}: {e}")
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -244,6 +248,20 @@ def backfill_from_sqlite() -> int:
 def get_table_count() -> int:
     table = _get_table(create=False)
     return table.count_rows() if table is not None else 0
+
+
+def list_video_ids(db_dir: Path | None = None) -> frozenset[str]:
+    """Return indexed video IDs without creating a missing LanceDB directory/table."""
+    target = db_dir or DB_DIR
+    if not target.exists():
+        return frozenset()
+    table = _get_table(create=False, db_dir=target)
+    if table is None or table.count_rows() == 0:
+        return frozenset()
+    # Project only the identifier column; to_arrow() materializes every high-dimensional
+    # vector and can turn a lightweight audit into a long, memory-heavy full-table read.
+    id_table = table.to_lance().scanner(columns=["video_id"]).to_table()
+    return frozenset(str(value) for value in id_table["video_id"].to_pylist())
 
 
 # ---------------------------------------------------------------------------

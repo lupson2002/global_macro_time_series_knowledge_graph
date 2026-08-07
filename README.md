@@ -61,6 +61,7 @@ SQLite가 정형 원본이며 Obsidian과 LanceDB는 재생성 가능한 파생 
 | `src/exporter.py` | SQLite, Obsidian, LanceDB export; DB->MD backfill |
 | `src/embedder.py` | 원격/local-ST/hash 임베딩 폴백 |
 | `src/lancedb_store.py` | LanceDB upsert, hybrid search, SQLite backfill |
+| `src/reconciliation.py` | SQLite 기준 파생 저장소 감사·누락 복구·시점 백업 |
 | `src/mcp_server.py` | SQLite 기반 read-only MCP 8 tools |
 | `src/report_generator.py` | 24시간 Daily report, 번역, 근거, 심리, 이메일 |
 | `src/orchestrator.py` | CIO 전략 보고서·시각화·이메일 |
@@ -112,6 +113,16 @@ python main.py --fetch_latest --tiers tier_1_highest_density --max_age_hours 36
 # SQLite -> Obsidian 복구
 python main.py --backfill_from_db
 
+# 저장소 일관성 감사(기본 read-only; drift 발견 시 종료 코드 2)
+python scripts/reconcile_storage.py
+
+# 누락 Markdown/vector만 복구(자동 백업 + 명시적 확인 필요)
+python scripts/reconcile_storage.py --apply --yes
+
+# LanceDB가 응답하지 않을 때 Markdown 범위만 감사/복구
+python scripts/reconcile_storage.py --markdown-only
+python scripts/reconcile_storage.py --markdown-only --apply --yes
+
 # Daily
 python src/report_generator.py --lookback_hours 24
 
@@ -155,6 +166,12 @@ python scripts/insights/run_market_narrative.py
 
 LLM 호출은 공통 provider 실행 계층이 재시도와 fallback을 한 번만 관리합니다. 기존 `chat_completion()`/`generate()` 문자열 API는 유지되며 결과 API에서는 실제 provider, 모델, 지연시간과 시도 이력을 확인할 수 있습니다.
 
+### 저장소 reconciliation
+
+`scripts/reconcile_storage.py`는 SQLite `reports`를 원본 집합으로 보고 Obsidian Markdown과 LanceDB video ID를 비교합니다. 기본 실행은 읽기 전용이며 누락 항목과 DB에 없는 고아 항목을 구분합니다. LanceDB native read가 지정 시간 안에 끝나지 않으면 감사를 중단하지 않고 vector 상태를 unavailable로 표시하며 적용을 거부합니다. `--markdown-only`로 Markdown 범위만 독립적으로 감사·복구할 수 있습니다. `--apply --yes`는 누락 항목만 생성하고 고아 항목은 삭제하지 않습니다. 적용 전 SQLite snapshot과 LanceDB 디렉터리를 `backups/reconciliation/`에 자동 보관합니다. 복구 실행 중에는 수집 파이프라인을 중지해야 합니다.
+
+종료 코드는 `0=일치/복구 완료`, `1=감사·복구 미완료`, `2=drift 발견`, `64=--apply 확인 부족`입니다. 일반 영상 파이프라인도 영상 또는 backfill 실패가 하나 이상이면 이제 `1`을 반환합니다.
+
 `.env`, `cookies.txt`, 실패 스크린샷과 운영 로그에는 민감 정보가 포함될 수 있습니다.
 
 ## 리팩토링 전 안전 순서
@@ -168,7 +185,7 @@ LLM 호출은 공통 provider 실행 계층이 재시도와 fallback을 한 번�
 ## 현재 제한
 
 - 대형 transcript는 전체를 보존하므로 provider context/timeout 한계에 도달할 수 있습니다.
-- SQLite·Obsidian·LanceDB에 분산 저장하므로 중간 실패 후 reconciliation이 필요할 수 있습니다.
+- SQLite·Obsidian·LanceDB에 분산 저장되지만 read-only 감사와 누락 복구 명령을 제공합니다. 고아 항목 삭제는 수동 판단이 필요합니다.
 - 단일 영상 결과는 성공·스킵·실패·큐 중단 및 실패 단계로 구분됩니다. Markdown 저장이 완료되어야 SQLite 완료 마커를 기록하므로 Markdown 실패 영상은 다음 실행에서 재시도됩니다.
 - 정식 회귀 테스트 커버리지가 아직 낮습니다.
 - 비활성 Tier 3/4 channel ID는 운영 전 검증이 필요합니다.

@@ -22,6 +22,7 @@ Compile: `.venv/bin/python -m compileall -q main.py src scripts publish_all_blog
 - `src/cloud_client.py`, `src/llm_router.py` — LLM provider routing.
 - `src/exporter.py` — SQLite source-of-truth writes and Obsidian/LanceDB projections.
 - `src/lancedb_store.py`, `src/embedder.py` — hybrid vector search and embeddings.
+- `src/reconciliation.py`, `scripts/reconcile_storage.py` — read-only drift audit and confirmed missing-only repair.
 - `src/mcp_server.py` — eight read-only SQLite/Obsidian MCP tools.
 - `src/insights/` — matrices, knowledge graph, RAG, normalization and timebox logic.
 - `scripts/` — reports, channel validation and blog automation.
