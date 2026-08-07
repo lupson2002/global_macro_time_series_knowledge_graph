@@ -211,3 +211,17 @@ orchestration으로 정리하되 파일 경로와 실행 순서를 characterizat
 
 **판정: PASS.** 다음 파동은 기존 콘솔 출력을 유지하면서 opt-in 구조화 event sink를
 추가하는 6번 실행 순서로 진행한다.
+
+## 여섯 번째 구현 파동 결과
+
+- `--event_log PATH`를 지정한 실행만 UTF-8 JSONL journal을 생성한다. 기본 실행은 추가
+  디렉터리나 파일을 만들지 않는다.
+- schema version 1에서 run/video/report lifecycle, running/success/skipped/failed 상태,
+  stage와 비민감 집계를 JSON 직렬화 가능한 계약으로 정의했다.
+- 기본 파이프라인은 동일한 `run_id` 아래 `run.started` → video lifecycle →
+  `run.finished` 순서로 기록하며 기존 대상 순서, 지연 규칙, 콘솔 출력과 종료 코드를 유지한다.
+- transcript, prompt, API key는 이벤트에 포함하지 않는다.
+- sink 쓰기가 처음 중단되면 경고 후 해당 sink만 비활성화하며 핵심 파이프라인 결과는
+  그대로 유지한다.
+- report lifecycle은 같은 schema에서 사용할 수 있도록 계약을 고정했고, 파생 report
+  entrypoint 연결은 각 CLI의 공개 옵션을 함께 설계하는 후속 additive 단계로 남겼다.

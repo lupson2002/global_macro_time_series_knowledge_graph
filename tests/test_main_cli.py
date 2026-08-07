@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from argparse import Namespace
@@ -20,6 +21,7 @@ class MainCliCharacterizationTests(unittest.TestCase):
         self.assertEqual(args.tiers, "all")
         self.assertEqual(args.max_videos, 0)
         self.assertFalse(args.overwrite)
+        self.assertIsNone(args.event_log)
 
     def test_main_wires_an_explicit_lancedb_projection(self):
         with tempfile.TemporaryDirectory() as directory, patch.object(
@@ -175,3 +177,42 @@ class MainCliCharacterizationTests(unittest.TestCase):
                 ),
             ],
         )
+
+    def test_main_writes_opt_in_run_and_video_events(self):
+        target = VideoTarget("abcdefghijk", "Manual")
+        service = Mock()
+        service.process.return_value = PipelineResult(
+            target,
+            PipelineStatus.SUCCESS,
+            PipelineStage.STORAGE,
+            transcript_chars=321,
+            markdown_path=Path("saved.md"),
+        )
+        with tempfile.TemporaryDirectory() as directory, patch.object(
+            pipeline_cli, "PipelineService", return_value=service
+        ), patch.object(pipeline_cli, "LocalLLMClient"), patch.object(
+            pipeline_cli, "SQLiteExporter"
+        ), patch.object(pipeline_cli, "ObsidianMDExporter"):
+            event_log = Path(directory) / "events.jsonl"
+            exit_code = pipeline_cli.main(
+                [
+                    "--video_id", target.video_id,
+                    "--source", target.source_channel,
+                    "--db_path", str(Path(directory) / "macro.db"),
+                    "--vault_dir", str(Path(directory) / "vault"),
+                    "--event_log", str(event_log),
+                ]
+            )
+            records = [
+                json.loads(line)
+                for line in event_log.read_text(encoding="utf-8").splitlines()
+            ]
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            [record["event"] for record in records],
+            ["run.started", "video.started", "video.finished", "run.finished"],
+        )
+        self.assertEqual(len({record["run_id"] for record in records}), 1)
+        self.assertEqual(records[2]["details"]["transcript_chars"], 321)
+        self.assertEqual(records[-1]["details"]["processed"], 1)

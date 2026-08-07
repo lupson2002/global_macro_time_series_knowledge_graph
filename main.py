@@ -34,6 +34,7 @@ from src.pipeline import (
     is_macro_relevant,
 )
 from src.projections import LanceDbProjection
+from src.run_events import RunJournal
 
 # 👑 [Ver 3.1] 76 매크로 채널 풀 (요건 2: Backfill Roster)
 # Stage 2 is now deepseek-ai/deepseek-v4-flash via nvidia-api-proxy (localhost:8000).
@@ -106,6 +107,10 @@ def build_parser() -> argparse.ArgumentParser:
                         help="[Ver 3.1] Export existing DB reports to Obsidian MD files (skips already-exported videos).")
     parser.add_argument("--tiers", default="all",
                         help="[Ver 3.1] Comma-separated tier names to include (e.g. 'tier_1_highest_density,tier_3_macro_independent') or 'all'. Default 'all'.")
+    parser.add_argument(
+        "--event_log",
+        help="Append opt-in run/video lifecycle events to this JSONL file",
+    )
     return parser
 
 
@@ -202,6 +207,12 @@ def main(argv: list[str] | None = None) -> int:
     project_dir = Path(__file__).resolve().parent
     db_file_path = project_dir / args.db_path
     vault_dir_path = project_dir / args.vault_dir
+    event_log_path = project_dir / args.event_log if args.event_log else None
+    events = RunJournal.from_path(
+        event_log_path,
+        warn=lambda message: tqdm.write(f"   ⚠️ {message}"),
+    )
+    events.run_started("backfill" if args.backfill_from_db else "pipeline")
 
     # Ensure directories exist
     db_file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -223,6 +234,7 @@ def main(argv: list[str] | None = None) -> int:
         obsidian_exporter = ObsidianMDExporter(str(vault_dir_path))
     except Exception as err:
         print(f"❌ Initialization failure: {err}")
+        events.run_finished(1, stage="initialization")
         return 1
     pipeline = PipelineService(
         db_path=str(db_file_path),
@@ -236,9 +248,11 @@ def main(argv: list[str] | None = None) -> int:
 
     # Backfill mode: jump to DB→MD export without requiring ingestion targets
     if args.backfill_from_db:
-        return run_backfill(
+        exit_code = run_backfill(
             db_file_path, vault_dir_path, obsidian_exporter
         )
+        events.run_finished(exit_code, stage="backfill")
+        return exit_code
 
     # Counters
     success_count = 0
@@ -256,12 +270,19 @@ def main(argv: list[str] | None = None) -> int:
     for video_id, source_channel, upload_date in pbar:
         pbar.set_postfix_str(f"Success: {success_count} | Skip: {skip_count} | Fail: {fail_count}")
         tqdm.write(f"\n🎬 Processing: {video_id} (Source: {source_channel})")
+        events.video_started(video_id, source_channel)
         result = pipeline.process(
             VideoTarget(video_id, source_channel, upload_date),
             overwrite=args.overwrite,
             apply_delays=(success_count + fail_count) > 0,
             ingest_delay=args.ingest_delay,
             llm_delay=args.llm_delay,
+        )
+        events.video_finished(
+            video_id, source_channel, result.status.value, result.stage.value,
+            abort_queue=result.abort_queue,
+            transcript_chars=result.transcript_chars,
+            warning_count=len(result.warnings),
         )
         if result.status is PipelineStatus.SUCCESS:
             success_count += 1
@@ -288,7 +309,16 @@ def main(argv: list[str] | None = None) -> int:
     print("🏁 Pipeline run finished.")
     print(f"   Processed: {success_count} | Skipped: {skip_count} | Failed: {fail_count}")
     print("=" * 60)
-    return 1 if fail_count else 0
+    exit_code = 1 if fail_count else 0
+    events.run_finished(
+        exit_code,
+        counts={
+            "processed": success_count,
+            "skipped": skip_count,
+            "failed": fail_count,
+        },
+    )
+    return exit_code
 
 if __name__ == "__main__":
     raise SystemExit(main())

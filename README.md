@@ -121,6 +121,10 @@ python main.py --fetch_latest --tiers tier_1_highest_density --max_age_hours 36
 # SQLite -> Obsidian 복구
 python main.py --backfill_from_db
 
+# 선택적 구조화 실행 기록(JSONL)
+python main.py --video_id uMMwAbYSmr4 --source CNBC_Bloomberg \
+  --event_log logs/pipeline-events.jsonl
+
 # 저장소 일관성 감사(기본 read-only; drift 발견 시 종료 코드 2)
 python scripts/reconcile_storage.py
 
@@ -145,6 +149,12 @@ python -m src.telegram_bot
 python scripts/insight_report.py
 python scripts/insights/run_market_narrative.py
 ```
+
+`--event_log`를 생략하면 추가 디렉터리나 파일을 만들지 않습니다. 지정하면 각 줄에 동일한
+`run_id`로 연결된 `run.started`, `video.started`, `video.finished`, `run.finished` 이벤트를
+추가합니다. 상태·단계·처리 문자 수와 집계만 기록하며 transcript, prompt, API key는
+기록하지 않습니다. 이벤트 파일 쓰기가 중단되어도 기존 콘솔 출력과 파이프라인 종료 코드는
+유지됩니다.
 
 ## 자동화 랩퍼
 

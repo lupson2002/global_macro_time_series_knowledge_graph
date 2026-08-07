@@ -61,3 +61,11 @@ CIO context의 `MAX_CONTEXT_CHARS` 제한은 ingestion transcript 절삭과 다�
 
 운영 기준은 SQLite 1,628 / Markdown 1,628 / vectors 1,629, 누락 0이며 기존 고아 vector
 `abc123def45`는 삭제하지 않는다.
+
+## Stage 19 result
+
+진입 gate에 따라 opt-in JSONL event sink를 추가했다. 기본 파이프라인의 run/video
+lifecycle은 실제 CLI에 연결했고 report lifecycle은 동일 schema의 직렬화 계약으로
+고정했다. sink 미지정 시 추가 쓰기가 없고, 첫 sink 쓰기 중단은 경고 후 관측 기능만
+비활성화하므로 기존 처리 결과와 종료 코드를 바꾸지 않는다. transcript와 prompt 같은
+대용량·민감 payload는 기록 대상에서 제외했다.
