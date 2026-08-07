@@ -58,6 +58,7 @@ SQLite가 정형 원본이며 Obsidian과 LanceDB는 재생성 가능한 파생 
 | `src/pipeline.py` | 단일 영상 처리 서비스, 단계별 결과·중단·부분 저장 상태 |
 | `src/ingestion.py` | YouTube RSS·transcript·yt-dlp 폴백 |
 | `src/local_llm_client.py` | Pydantic 스키마, 프롬프트, JSON 복구/Validation |
+| `src/llm_response.py` | provider-neutral JSON sanitize·복구·override·soft validation |
 | `src/cloud_client.py` | Ollama Cloud 우선 + NIM 폴백 |
 | `src/llm_router.py` | Cerebras/Groq/NIM 라우팅 |
 | `src/exporter.py` | SQLite 원본 저장, Obsidian projection, DB→MD backfill |

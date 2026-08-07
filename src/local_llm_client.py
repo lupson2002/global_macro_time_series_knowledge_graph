@@ -17,11 +17,13 @@ Class name and file name are retained for compatibility.
   관련 상수/CHUNK_SUMMARY_PROMPT 제거.
 """
 
-import time
-import re
 import json
+import re
+import time
 from typing import Optional
 from pydantic import BaseModel, Field
+
+from src.llm_response import ExtractionResponseProcessor
 
 # ---------------------------------------------------------------------------
 # Production endpoint / model constants
@@ -463,69 +465,33 @@ class LocalLLMClient:
           3. If both fail → retry the LLM call once (re-feed original transcript)
           4. On retry success, re-parse
         """
-        max_parse_attempts = 2
-        for parse_attempt in range(max_parse_attempts):
-            try:
-                sanitized = _extract_json(raw_text)
-                parsed_data = json.loads(sanitized)
+        def recover() -> str:
+            retry_prompt = (
+                "Your previous response could not be parsed as JSON. "
+                "Respond with ONLY a single valid JSON object — no markdown fences, "
+                "no prose before or after, no code blocks. Start with '{' and end with '}'.\n\n"
+            )
+            retry_prompt += self._build_prompt(
+                transcript_text=(
+                    transcript_text if transcript_text else "(no transcript available)"
+                ),
+                video_id=video_id,
+                source_channel=source_channel,
+                upload_date=upload_date,
+            )
+            return self._chat(
+                system=SYSTEM_PROMPT,
+                user=retry_prompt,
+                response_format_json=True,
+            )
 
-                # Guarantee video_id is set correctly in metadata
-                if "metadata" in parsed_data:
-                    parsed_data["metadata"]["video_id"] = video_id
-                    # 👑 source_channel — 입력 신뢰, 무조건 override(broadcast_date 와 일관).
-                    # 이전 조건부( LLM 이 Unknown/"" 시만)는 LLM 추론값이 DB 에 남는
-                    # 비일관성이 있었음.
-                    if source_channel:
-                        parsed_data["metadata"]["source_channel"] = source_channel
-                    # 👑 [Override Date with Actual Upload Date]
-                    if upload_date:
-                        parsed_data["metadata"]["broadcast_date"] = upload_date
-
-                # Post-process to ensure obsidian brackets [[ ]]
-                parsed_data = post_process_json(parsed_data)
-                # 👑 Pydantic soft validation — 스키마 위반 시 warning 만, 원본 반환.
-                # hard reject 시 기존 파이프라인 동작(이상치도 통과) 변경 위험이 있어
-                # soft 선택(가시성만 추가, behavior preserved).
-                try:
-                    MacroViewSchema.model_validate(parsed_data)
-                except Exception as ve:
-                    print(f"   [WARN] Pydantic schema validation soft-fail (data kept as-is): {ve}")
-                return parsed_data
-
-            except (json.JSONDecodeError, ValueError) as e:
-                print(
-                    f"   [WARN] JSON parse attempt {parse_attempt + 1} failed: {e}\n"
-                    f"   [DEBUG] Raw response (first 400 chars): {raw_text[:400]!r}"
-                )
-                if parse_attempt < max_parse_attempts - 1:
-                    # Retry: ask the model to emit pure JSON (no markdown, no prose).
-                    # Re-feed the ORIGINAL transcript text — _chat is stateless
-                    # (fresh messages list each call), so the model has no way to
-                    # recover context unless we pass it back explicitly.
-                    print("   [RETRY] Re-issuing JSON-mode call to recover parseable output...")
-                    retry_prompt = (
-                        "Your previous response could not be parsed as JSON. "
-                        "Respond with ONLY a single valid JSON object — no markdown fences, "
-                        "no prose before or after, no code blocks. Start with '{' and end with '}'.\n\n"
-                    )
-                    # Retry에서도 원본 transcript 전체를 재주입한다.
-                    refeed_text = transcript_text if transcript_text else "(no transcript available)"
-                    retry_prompt += self._build_prompt(
-                        transcript_text=refeed_text,
-                        video_id=video_id,
-                        source_channel=source_channel,
-                        upload_date=upload_date,
-                    )
-                    raw_text = self._chat(
-                        system=SYSTEM_PROMPT,
-                        user=retry_prompt,
-                        response_format_json=True,
-                    )
-                else:
-                    raise RuntimeError(
-                        f"JSON parsing failed after {max_parse_attempts} attempts. "
-                        f"Last error: {e}. Raw response (first 500 chars): {raw_text[:500]!r}"
-                    )
+        return ExtractionResponseProcessor(MacroViewSchema.model_validate).process(
+            raw_text,
+            video_id=video_id,
+            source_channel=source_channel,
+            upload_date=upload_date,
+            recover=recover,
+        )
 
 
 if __name__ == "__main__":

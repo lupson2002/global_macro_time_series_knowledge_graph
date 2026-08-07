@@ -34,6 +34,11 @@ YouTube ID를 날짜 기반 파일명 정규식으로 판별한다.
 
 `src/llm_providers.py`가 provider-neutral 실행, 빈 응답 판정, 재시도, 순차 failover와 시도 메타데이터를 담당한다. `cloud_client.chat_completion()`과 `Llama70BRouter.generate()`는 기존 문자열 API를 유지하며, 각각의 `*_result()` API는 성공 provider·모델·지연시간·전체 시도 이력을 반환한다.
 
+`src.llm_response.ExtractionResponseProcessor`는 provider 호출과 분리된 응답 경계다. 첫 응답을
+sanitize/parse하고, 파싱 불가 시 `LocalLLMClient`가 제공한 recovery callback을 최대 한 번 호출한다.
+성공 데이터에는 신뢰 가능한 video ID/source/upload date override와 backlink 정규화를 적용한 뒤
+Pydantic soft validation을 수행한다. recovery prompt에도 원본 transcript 전체가 다시 포함된다.
+
 ### General generation
 
 `src/cloud_client.py::chat_completion`
@@ -148,12 +153,12 @@ TurboVec server와 `.tvim` 인덱스는 현재 아키텍처에 존재하지 않�
 1. transcript 원문 전체 전달
 2. video ID 기반 멱등성
 3. 입력 source channel/upload date의 최종 override
-4. JSON sanitization + one parse recovery call
-5. backlink normalization
-6. non-macro skip의 영속화
-7. SQLite 기준 Obsidian/LanceDB 재생성
-8. MCP read-only 제한
-9. DB 원문 기반 근거/인용 결정론적 렌더링
+4. JSON sanitization → trusted metadata override → backlink normalization → soft validation,
+   parse 불가 시 원문 전체를 포함한 recovery call 최대 1회
+5. non-macro skip의 영속화
+6. SQLite 기준 Obsidian/LanceDB 재생성
+7. MCP read-only 제한
+8. DB 원문 기반 근거/인용 결정론적 렌더링
 
 ## 9. Known refactoring targets
 

@@ -1,7 +1,9 @@
+import json
 import unittest
 from unittest.mock import Mock, patch
 
 from src.local_llm_client import LocalLLMClient
+from tests.helpers import macro_view
 
 
 class FullTranscriptTests(unittest.TestCase):
@@ -49,6 +51,21 @@ class FullTranscriptTests(unittest.TestCase):
         self.assertIn("middle-marker", captured[0])
         self.assertIn("TAIL", captured[0])
         self.assertNotIn("[중략:", captured[0])
+
+    def test_parse_recovery_makes_exactly_two_calls_with_full_transcript(self):
+        transcript = "HEAD" + ("middle " * 10_000) + "TAIL"
+        client = LocalLLMClient()
+        with patch.object(
+            client, "_chat", side_effect=["not-json", json.dumps(macro_view())]
+        ) as chat:
+            result = client.analyze_transcript(
+                transcript, "abcdefghijk", "Trusted", "2026-08-07"
+            )
+
+        self.assertEqual(result["metadata"]["video_id"], "abcdefghijk")
+        self.assertEqual(chat.call_count, 2)
+        for invocation in chat.call_args_list:
+            self.assertIn(transcript, invocation.kwargs["user"])
 
 
 if __name__ == "__main__":

@@ -98,3 +98,12 @@ Telegram tool loop, insight 파이프라인이다.
   복구 경로를 제공한다.
 - `src/exporter.py` 위험 점수는 11에서 9로 감소했고 최대 위험 함수가 원본 upsert에서
   schema initialization으로 이동했다.
+
+## 네 번째 구현 파동 결과
+
+- provider-neutral `ExtractionResponseProcessor`를 추가했다.
+- sanitize/parse, 1회 recovery, trusted metadata override, backlink normalization,
+  soft validation 순서를 독립 테스트로 고정했다.
+- `LocalLLMClient`는 recovery callback과 전체 transcript prompt 구성만 담당한다.
+- 최초 성공은 LLM 1회, parse recovery는 정확히 총 2회 호출하며 양쪽 모두 원문 전체를 전달한다.
+- `_parse_and_validate`는 79줄에서 43줄로 감소했고 공개 helper/API는 유지했다.
