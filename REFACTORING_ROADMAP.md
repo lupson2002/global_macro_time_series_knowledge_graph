@@ -107,3 +107,17 @@ Telegram tool loop, insight 파이프라인이다.
 - `LocalLLMClient`는 recovery callback과 전체 transcript prompt 구성만 담당한다.
 - 최초 성공은 LLM 1회, parse recovery는 정확히 총 2회 호출하며 양쪽 모두 원문 전체를 전달한다.
 - `_parse_and_validate`는 79줄에서 43줄로 감소했고 공개 helper/API는 유지했다.
+
+## 다섯 번째 구현 파동 사전 특성화 결과
+
+- Daily의 가중 심리·tail-risk 차감·빈 표본 레짐을 결정론적 테스트로 고정했다.
+- CIO의 근거 필드 context, JSON 시각화 payload 추출, Markdown 표 치환과 pipe
+  escape 계약을 고정했다.
+- Telegram의 JSON tool 인자, 명시적 dispatch 오류, 줄 우선 메시지 분할을 고정했다.
+- Insight의 matrix headline, 빈 결과 안내, narrative graph node 보존을 고정했다.
+- 네 파이프라인의 순수 계산/렌더링과 LLM·파일·메일·Telegram 부작용 경계를
+  `DERIVED_PIPELINE_CONTRACTS.md`에 기록했다.
+- 런타임 코드, 출력 형식, provider, 저장 schema와 운영 데이터는 변경하지 않았다.
+
+다음 구현은 가장 위험이 낮은 JSON/list 정규화 helper 통합부터 시작한다. 이후 메일
+delivery adapter, 렌더링 envelope, 파생 LLM 경계, 얇은 진입점 순으로 진행한다.

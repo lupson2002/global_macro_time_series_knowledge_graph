@@ -2,6 +2,9 @@
 
 YouTube의 거시경제·금융 전문가 발언을 수집하고 LLM으로 구조화해 SQLite, Obsidian, LanceDB에 누적하는 로컬 우선 매크로 인텔리전스 파이프라인입니다. 축적된 데이터로 일일·주간·CIO·마켓 내러티브 보고서와 블로그 원고를 생성합니다.
 
+파생 리포트(Daily/CIO/Telegram/Insight)의 현재 입력·출력·부작용 경계와 안전한 통합
+순서는 [DERIVED_PIPELINE_CONTRACTS.md](DERIVED_PIPELINE_CONTRACTS.md)를 참고하세요.
+
 ## 실제 아키텍처
 
 ```text
