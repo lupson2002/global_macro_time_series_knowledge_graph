@@ -25,6 +25,8 @@ Discovery -> Ingestion -> Analysis -> Relevance gate -> Persistence -> Derived p
 
 런타임 설정은 `src/config.py`가 `.env`를 로드해 `Settings`/`LLMSettings`/`EmbeddingSettings`/`EmailSettings`/`TelegramSettings`로 검증한다. 소비 모듈은 직접 `os.environ`을 읽지 않고 공통 `settings`를 사용한다. 기존 모듈 상수는 호환성을 위한 alias로 유지한다.
 
+`src/llm_providers.py`가 provider-neutral 실행, 빈 응답 판정, 재시도, 순차 failover와 시도 메타데이터를 담당한다. `cloud_client.chat_completion()`과 `Llama70BRouter.generate()`는 기존 문자열 API를 유지하며, 각각의 `*_result()` API는 성공 provider·모델·지연시간·전체 시도 이력을 반환한다.
+
 ### General generation
 
 `src/cloud_client.py::chat_completion`

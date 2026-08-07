@@ -152,6 +152,8 @@ python scripts/insights/run_market_narrative.py
 
 숫자 설정은 0보다 커야 하고 URL은 `http://` 또는 `https://`로 시작해야 합니다. `MCP_TRANSPORT`는 `inproc` 또는 `stdio`만 허용됩니다. 선택 provider API key가 비어 있으면 해당 provider를 즉시 건너뛰고 다음 폴백으로 진행합니다.
 
+LLM 호출은 공통 provider 실행 계층이 재시도와 fallback을 한 번만 관리합니다. 기존 `chat_completion()`/`generate()` 문자열 API는 유지되며 결과 API에서는 실제 provider, 모델, 지연시간과 시도 이력을 확인할 수 있습니다.
+
 `.env`, `cookies.txt`, 실패 스크린샷과 운영 로그에는 민감 정보가 포함될 수 있습니다.
 
 ## 리팩토링 전 안전 순서

@@ -22,6 +22,12 @@ from openai import OpenAI
 from ollama import Client as OllamaClient
 
 from src.config import settings
+from src.llm_providers import (
+    CompletionResult,
+    ProviderChainError,
+    ProviderStep,
+    execute_provider_chain,
+)
 
 # ── Ollama Cloud (메인, 공식 ollama Client) ──
 OLLAMA_PRO_BASE_URL = settings.llm.ollama_base_url
@@ -72,7 +78,7 @@ def _extract_content_ollama(resp) -> str:
     return str(content or "").strip()
 
 
-def chat_completion(
+def chat_completion_result(
     system: str,
     user: str,
     max_tokens: int = 4096,
@@ -80,8 +86,9 @@ def chat_completion(
     model: str | None = None,
     nim_model: str | None = None,
     response_format: dict | None = None,
-) -> str:
-    """Ollama Cloud(공식 Client) 우선 → NIM(OpenAI 호환) 폴백으로 텍스트 생성.
+    ollama_attempts: int = 3,
+) -> CompletionResult:
+    """Generate text and return provider/model/latency/attempt metadata.
 
     model: Ollama 모델(기본 OLLAMA_PRO_MODEL). nim_model: NIM 폴백 모델.
     """
@@ -94,37 +101,20 @@ def chat_completion(
     options = {"num_predict": int(max_tokens), "temperature": float(temperature)}
     fmt = "json" if response_format else None
 
-    # 1) Ollama Cloud (공식 ollama Client — Bearer 인증 헤더 + host 명시)
-    # 👑 [2026-08-07] 빈 응답/일시 오류 시 즉시 NIM 폴백하지 않고 3회 재시도.
-    #    합성 프롬프트(24h 전체 데이터)에서 Ollama가 간헐적 빈 응답을 반환하며,
-    #    그때 NIM(504 장애)으로 바로 넘어가 병목이 됐던 사례 확인 → 재시도로 방어.
-    for _attempt in range(1, 4) if OLLAMA_PRO_API_KEY else ():
-        try:
-            client = _get_ollama_client()
-            # 👑 [2026-08-07] 근본원인: deepseek-v4-flash:0731-cloud 는 reasoning 모델이라
-            #    매 응답이 thinking 필드를 먼저 생성 → num_predict(max_tokens) 예산이
-            #    thinking에 소진되면 content='' + done_reason=length (빈 응답 오판).
-            #    think=False 로 reasoning 비활성화 → 예산 100% content에 사용 (실측 검증).
-            resp = client.chat(model=m, messages=messages, stream=False, think=False,
-                               format=fmt, options=options)
-            content = _extract_content_ollama(resp)
-            if content:
-                print(f"[CloudClient] Ollama OK ({m})")
-                return content
-            print(f"[CloudClient] Ollama 빈 응답 (시도 {_attempt}/3, done={getattr(resp, 'done_reason', '?')}) — 1.5s 후 재시도")
-        except Exception as e:  # noqa: BLE001
-            # ollama.ResponseError: e.status_code + e.error(서버 전체 메시지) — 400 원인 파악용
-            err_detail = getattr(e, "error", None) or str(e)
-            status = getattr(e, "status_code", "")
-            print(f"[CloudClient] Ollama 실패 (status={status} {type(e).__name__}: {err_detail}) — 시도 {_attempt}/3, 1.5s 후 재시도")
-        time.sleep(1.5)
-    if OLLAMA_PRO_API_KEY:
-        print("[CloudClient] Ollama 3회 빈 응답/실패 — NIM 폴백")
-    else:
-        print("[CloudClient] OLLAMA_PRO_API_KEY 미설정 — NIM 폴백")
+    def call_ollama() -> str:
+        client = _get_ollama_client()
+        # Reasoning can consume the full output budget and leave content empty.
+        resp = client.chat(
+            model=m,
+            messages=messages,
+            stream=False,
+            think=False,
+            format=fmt,
+            options=options,
+        )
+        return _extract_content_ollama(resp)
 
-    # 2) NIM 폴백 (OpenAI 호환)
-    try:
+    def call_nim() -> str:
         client = _get_openai_client()
         resp = client.chat.completions.create(
             model=nm,
@@ -136,13 +126,59 @@ def chat_completion(
         content = resp.choices[0].message.content
         if isinstance(content, list):
             content = "".join(p.get("text", "") for p in content if isinstance(p, dict))
-        content = str(content or "").strip()
-        print(f"[CloudClient] NIM 폴백 ({nm})")
-        return content
-    except Exception as e:  # noqa: BLE001
-        raise RuntimeError(
-            f"CloudClient: Ollama+NIM 모두 실패. 마지막 오류: {type(e).__name__}: {e}"
+        return str(content or "").strip()
+
+    steps = []
+    if OLLAMA_PRO_API_KEY:
+        steps.append(
+            ProviderStep(
+                "ollama", m, call_ollama, max_attempts=ollama_attempts, retry_delay_s=1.5
+            )
         )
+    else:
+        print("[CloudClient] OLLAMA_PRO_API_KEY 미설정 — NIM 폴백")
+    steps.append(ProviderStep("nim", nm, call_nim))
+
+    try:
+        result = execute_provider_chain(steps, sleep=time.sleep)
+    except ProviderChainError as exc:
+        raise RuntimeError(
+            f"CloudClient: Ollama+NIM 모두 실패. 마지막 오류: {exc}"
+        ) from exc
+    for attempt in result.attempts:
+        if not attempt.succeeded:
+            print(
+                f"[CloudClient] {attempt.provider} 실패 "
+                f"(시도 {attempt.attempt}, {attempt.error}) — failover/retry"
+            )
+    print(
+        f"[CloudClient] {result.provider} OK ({result.model}, "
+        f"{result.latency_ms:.0f}ms)"
+    )
+    return result
+
+
+def chat_completion(
+    system: str,
+    user: str,
+    max_tokens: int = 4096,
+    temperature: float = 0.3,
+    model: str | None = None,
+    nim_model: str | None = None,
+    response_format: dict | None = None,
+    ollama_attempts: int = 3,
+) -> str:
+    """Backward-compatible text-only wrapper around :func:`chat_completion_result`."""
+    return chat_completion_result(
+        system=system,
+        user=user,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        model=model,
+        nim_model=nim_model,
+        response_format=response_format,
+        ollama_attempts=ollama_attempts,
+    ).content
 
 
 if __name__ == "__main__":

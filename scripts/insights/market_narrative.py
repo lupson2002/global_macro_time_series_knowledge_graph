@@ -258,31 +258,26 @@ def collect_rag_context(use_timebox: bool = True, top_k: int = DEFAULT_TOP_K) ->
 # ---------------------------------------------------------------------------
 def _call_llm_narrative(system: str, user: str, max_tokens: int = NARRATIVE_MAX_TOKENS) -> str:
     """Ollama Cloud 우선/NIM 폴백 호출 — 내러티브 보고서는 섹션 5(3x3)까지 분량이 커
-    `rag_insights._call_llm`(2048) 대신 max_tokens 상향 + retry/backoff 사용.
+    `rag_insights._call_llm`(2048) 대신 max_tokens를 상향하고 공통 재시도 정책을 사용.
 
     기존 코드 수정 없이 market_narrative.py 전용 래퍼로 독립 실행.
     """
-    import time
     from src import cloud_client
 
-    last_err: Exception | None = None
-    for attempt in range(3):
-        try:
-            # 👑 [Ollama 전환] cloud_client (Ollama Cloud 우선, NIM 폴백)
-            text = cloud_client.chat_completion(
-                system=system, user=user, max_tokens=max_tokens, temperature=0.3,
-                nim_model=INSIGHT_MODEL,
-            )
-            if not text.strip():
-                raise RuntimeError(f"Ollama/NIM({INSIGHT_MODEL}) 빈 응답")
-            return text
-        except Exception as e:  # noqa: BLE001
-            last_err = e
-            if attempt < 2:
-                sleep_s = 2.0 * (2 ** attempt)
-                print(f"   [WARN] 내러티브 추론 재시도 {attempt+1}: {e} — {sleep_s}s 대기")
-                time.sleep(sleep_s)
-    raise RuntimeError(f"내러티브 추론 실패(3회): {last_err}")
+    try:
+        text = cloud_client.chat_completion(
+            system=system,
+            user=user,
+            max_tokens=max_tokens,
+            temperature=0.3,
+            nim_model=INSIGHT_MODEL,
+            ollama_attempts=3,
+        )
+        if not text.strip():
+            raise RuntimeError(f"Ollama/NIM({INSIGHT_MODEL}) 빈 응답")
+        return text
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(f"내러티브 추론 실패: {exc}") from exc
 
 
 def generate_narrative_report(use_timebox: bool = True, top_k: int = DEFAULT_TOP_K, no_llm: bool = False) -> str:

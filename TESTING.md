@@ -19,7 +19,8 @@ The suite uses temporary directories and mocks. It does not require network acce
 - `test_pipeline_contracts.py`: macro relevance rules, skipped-video idempotency, channel tier filtering.
 - `test_storage.py`: legacy SQLite migration, upsert semantics, JSON round-trip, Obsidian YAML/backlinks.
 - `test_mcp_security.py`: SQL allow-list, recursive CTE rejection, result cap, SQLite read-only URI.
-- `test_providers_and_vectors.py`: Ollama/NIM failover, multi-provider routing, deterministic embedding fallback, LanceDB empty/search boundaries.
+- `test_llm_providers.py`: provider retry/failover limits, empty response handling and attempt metadata.
+- `test_providers_and_vectors.py`: Ollama/NIM failover, multi-provider round-robin/metadata, deterministic embedding fallback, LanceDB empty/search boundaries.
 
 ## Safety rules for new tests
 

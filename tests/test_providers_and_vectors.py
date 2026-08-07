@@ -33,6 +33,19 @@ class CloudClientTests(unittest.TestCase):
         nim.assert_not_called()
         self.assertFalse(ollama.chat.call_args.kwargs["think"])
 
+    def test_result_exposes_provider_model_and_attempts(self):
+        ollama = Mock()
+        ollama.chat.return_value = types.SimpleNamespace(
+            message=types.SimpleNamespace(content=" primary "), done_reason="stop"
+        )
+        with patch.object(cloud_client, "OLLAMA_PRO_API_KEY", "configured"), patch.object(
+            cloud_client, "_get_ollama_client", return_value=ollama
+        ):
+            result = cloud_client.chat_completion_result("system", "user", model="model-x")
+        self.assertEqual((result.content, result.provider, result.model), ("primary", "ollama", "model-x"))
+        self.assertEqual(len(result.attempts), 1)
+        self.assertTrue(result.attempts[0].succeeded)
+
     def test_three_ollama_failures_fall_back_to_nim(self):
         ollama = Mock()
         ollama.chat.side_effect = RuntimeError("offline")
@@ -87,6 +100,22 @@ class MultiProviderRouterTests(unittest.TestCase):
         router._nim_model = "nim-model"
         router._rr_index = 0
         self.assertEqual(router.generate("s", "u"), "nim")
+        self.assertEqual(router.last_result.provider, "NIM")
+
+    def test_result_metadata_preserves_round_robin_selection(self):
+        router = object.__new__(Llama70BRouter)
+        first, second, nim = Mock(), Mock(), Mock()
+        second.chat.completions.create.return_value = completion("second")
+        router._providers = [("first", first, "m1"), ("second", second, "m2")]
+        router._nim = nim
+        router._nim_model = "nim"
+        router._rr_index = 1
+        router.last_result = None
+        result = router.generate_result("s", "u")
+        self.assertEqual((result.provider, result.model), ("second", "m2"))
+        first.chat.completions.create.assert_not_called()
+        nim.chat.completions.create.assert_not_called()
+        self.assertEqual(router._rr_index, 0)
 
 
 class EmbeddingAndVectorBoundaryTests(unittest.TestCase):

@@ -231,7 +231,12 @@ def _call_nim_reasoner_sync(system: str, user: str) -> str:
     """동기 LLM 호출(asyncio.to_thread 로 비동기화) — Ollama Cloud 우선, NIM 폴백."""
     from src import cloud_client
     content = cloud_client.chat_completion(
-        system=system, user=user, max_tokens=8192, temperature=0.3, nim_model=TIER3_MODEL,
+        system=system,
+        user=user,
+        max_tokens=8192,
+        temperature=0.3,
+        nim_model=TIER3_MODEL,
+        ollama_attempts=4,
     )
     if not content:
         raise RuntimeError(f"Ollama/NIM returned empty content for {TIER3_MODEL}")
@@ -422,25 +427,12 @@ async def query_reasoner_llm(context_data: str) -> str:
         "위 컨센서스를 기반으로 매크로 자산배분 리포트를 생성해 주세요."
     )
 
-    # 👑 [A16] retry/backoff — 429/500/529/네트워크 빈도. idempotent read.
-    max_retries = 4
-    last_err: Exception | None = None
-    for attempt in range(max_retries):
-        try:
-            result = await asyncio.to_thread(_call_nim_reasoner_sync, system_instruction, prompt)
-            result = result.strip()
-            if not result:
-                raise RuntimeError(f"LLM returned empty content for {TIER3_MODEL}")
-            return result
-        except Exception as e:
-            last_err = e
-            if attempt < max_retries - 1:
-                sleep_s = 2.0 * (2 ** attempt)
-                print(f"   [WARN] LLM call attempt {attempt+1} failed: {e} — retry in {sleep_s}s")
-                await asyncio.sleep(sleep_s)
-            else:
-                raise
-    raise RuntimeError(f"LLM reasoning failed after {max_retries} attempts: {last_err}")
+    # Provider retries/fallback run once inside the shared execution layer.
+    result = await asyncio.to_thread(_call_nim_reasoner_sync, system_instruction, prompt)
+    result = result.strip()
+    if not result:
+        raise RuntimeError(f"LLM returned empty content for {TIER3_MODEL}")
+    return result
 
 # ---------------------------------------------------------------------------
 # Report Saving Step

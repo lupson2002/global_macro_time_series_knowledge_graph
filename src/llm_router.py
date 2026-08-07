@@ -20,6 +20,12 @@ from __future__ import annotations
 from openai import OpenAI
 
 from src.config import settings
+from src.llm_providers import (
+    CompletionResult,
+    ProviderChainError,
+    ProviderStep,
+    execute_provider_chain,
+)
 
 # ── NIM 폴백 (기존 3-Tier 공용) ──
 NIM_BASE_URL = settings.llm.nim_base_url
@@ -50,6 +56,7 @@ class Llama70BRouter:
         self._nim = OpenAI(base_url=NIM_BASE_URL, api_key=NIM_API_KEY, timeout=300.0)
         self._nim_model = NIM_MODEL
         self._rr_index = 0  # 라운드로빈 시작 포인터
+        self.last_result: CompletionResult | None = None
 
     @property
     def available_providers(self) -> list[str]:
@@ -64,8 +71,25 @@ class Llama70BRouter:
         temperature: float = 0.3,
         **kwargs,
     ) -> str:
+        """Backward-compatible text-only generation API."""
+        return self.generate_result(
+            system=system,
+            user=user,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            **kwargs,
+        ).content
+
+    def generate_result(
+        self,
+        system: str,
+        user: str,
+        max_tokens: int = 2048,
+        temperature: float = 0.3,
+        **kwargs,
+    ) -> CompletionResult:
         """시스템+유저 프롬프트로 텍스트 생성. 우선순위 프로바이더 순차 시도,
-        전부 실패(429/오류/빈응답) 시 NIM 폴백. 성공한 프로바이더를 로그로 남김."""
+        전부 실패(429/오류/빈응답) 시 NIM 폴백하고 관측 메타데이터를 반환."""
         messages = [
             {"role": "system", "content": system},
             {"role": "user", "content": user},
@@ -73,34 +97,58 @@ class Llama70BRouter:
 
         # 라운드로빈 — 매 호출마다 시작 프로바이더를 순환 (예: Groq Key1 ↔ Key2 번갈아 사용)
         n = len(self._providers)
-        if n == 0:
-            return self._fallback_nim(messages, max_tokens, temperature)
-        start = self._rr_index % n
-        last_tried = start
+        start = self._rr_index % n if n else 0
+        ordered: list[tuple[int, str, OpenAI, str]] = []
         for offset in range(n):
             idx = (start + offset) % n
             name, client, model = self._providers[idx]
-            try:
+            ordered.append((idx, name, client, model))
+
+        def openai_call(client: OpenAI, model: str) -> str:
+            def call() -> str:
                 resp = client.chat.completions.create(
                     model=model,
                     messages=messages,
                     max_tokens=max_tokens,
                     temperature=temperature,
                 )
-                content = (resp.choices[0].message.content or "").strip()
-                if content:
-                    print(f"[Llama70BRouter] Success via {name} ({model})")
-                    self._rr_index = (idx + 1) % n  # 다음 호출은 다음 키부터
-                    return content
-                print(f"[Llama70BRouter] {name} 빈 응답 — failover")
-            except Exception as e:  # noqa: BLE001
-                print(f"[Llama70BRouter] {name} 실패 ({type(e).__name__}: {e}) — failover")
-            last_tried = idx
-        self._rr_index = (last_tried + 1) % n  # 전부 실패 시에도 순환 진행
-        return self._fallback_nim(messages, max_tokens, temperature)
+                return str(resp.choices[0].message.content or "").strip()
+
+            return call
+
+        steps = [
+            ProviderStep(name, model, openai_call(client, model))
+            for _, name, client, model in ordered
+        ]
+        steps.append(
+            ProviderStep("NIM", self._nim_model, openai_call(self._nim, self._nim_model))
+        )
+        try:
+            result = execute_provider_chain(steps)
+        except ProviderChainError as exc:
+            if n:
+                self._rr_index = (ordered[-1][0] + 1) % n
+            raise RuntimeError(
+                f"Llama70BRouter: 모든 프로바이더 실패. 마지막 오류: {exc}"
+            ) from exc
+
+        for attempt in result.attempts:
+            if not attempt.succeeded:
+                print(f"[Llama70BRouter] {attempt.provider} 실패 ({attempt.error}) — failover")
+        if result.provider != "NIM":
+            success_idx = next(idx for idx, name, _, _ in ordered if name == result.provider)
+            self._rr_index = (success_idx + 1) % n
+        elif n:
+            self._rr_index = (ordered[-1][0] + 1) % n
+        self.last_result = result
+        print(
+            f"[Llama70BRouter] Success via {result.provider} "
+            f"({result.model}, {result.latency_ms:.0f}ms)"
+        )
+        return result
 
     def _fallback_nim(self, messages: list, max_tokens: int, temperature: float) -> str:
-        """NIM 폴백 (안전장치) — 모든 프로바이더 실패 시."""
+        """Compatibility helper retained for callers that use the former private method."""
         try:
             resp = self._nim.chat.completions.create(
                 model=self._nim_model,

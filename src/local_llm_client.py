@@ -22,14 +22,11 @@ import re
 import json
 from typing import Optional
 from pydantic import BaseModel, Field
-from openai import OpenAI
 
 # ---------------------------------------------------------------------------
 # Production endpoint / model constants
 # ---------------------------------------------------------------------------
-DEFAULT_BASE_URL = "http://localhost:8000"
 DEFAULT_MODEL_NAME = "deepseek-ai/deepseek-v4-flash"
-DUMMY_API_KEY = "proxy-rotates-keys"
 
 # ---------------------------------------------------------------------------
 # Pydantic Schemas for Structured JSON output (for type safety and documentation)
@@ -346,19 +343,12 @@ def _extract_json(text: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Local OpenAI-Compatible Client Wrapper (Stage 2 LLM)
+# Shared Provider Client Wrapper (Stage 2 LLM)
 # ---------------------------------------------------------------------------
 class LocalLLMClient:
     def __init__(self, timeout: float = 140.0):
-        # nvidia-api-proxy rotates its own 6 NVIDIA API keys — client uses a
-        # placeholder; the proxy overrides the Authorization header per call.
-        # Per-call timeout is set at client init (OpenAI SDK does not expose
-        # per-request timeout on chat.completions.create()).
-        self.client = OpenAI(
-            base_url=DEFAULT_BASE_URL,
-            api_key=DUMMY_API_KEY,
-            timeout=timeout,
-        )
+        # Kept for constructor compatibility; provider timeouts are centrally configured.
+        self.timeout = timeout
         self.model_name = DEFAULT_MODEL_NAME
         self.last_call_time = 0.0
         self.min_delay = 0.2  # Remote NIM via proxy — proxy handles rate limiting via 6-key rotation
@@ -373,7 +363,7 @@ class LocalLLMClient:
             time.sleep(self.min_delay - elapsed)
 
     def _chat(self, system: str, user: str, response_format_json: bool = False, max_tokens: int = None, max_retries: int = 3) -> str:
-        """Single chat completion with retry + exponential backoff.
+        """Single provider-chain completion with centrally bounded retries.
 
         Returns the raw message content (str). The caller is responsible for
         JSON parsing — this allows callers to operate in TEXT mode (for chunk
@@ -390,29 +380,23 @@ class LocalLLMClient:
         max_tok = min(max_tokens, 4096) if max_tokens is not None else 4096
 
         from src import cloud_client
-        last_err: Exception | None = None
-        for attempt in range(max_retries):
-            try:
-                content = cloud_client.chat_completion(
-                    system=system, user=user, max_tokens=max_tok, temperature=0.1,
-                    nim_model=self.model_name, response_format=response_format,
-                )
-                self.last_call_time = time.time()
-                if not content.strip():
-                    raise RuntimeError(f"Empty completion from {self.model_name}")
-                return content
-            except Exception as e:
-                self.last_call_time = time.time()
-                last_err = e
-                if attempt < max_retries - 1:
-                    sleep_s = 2.0 * (2 ** attempt)
-                    print(f"   [WARN] _chat attempt {attempt+1} failed: {e} — sleeping {sleep_s}s")
-                    time.sleep(sleep_s)
-                else:
-                    break
-        raise RuntimeError(
-            f"Local LLM inference failed after {max_retries} attempts: {last_err}"
-        )
+        try:
+            content = cloud_client.chat_completion(
+                system=system,
+                user=user,
+                max_tokens=max_tok,
+                temperature=0.1,
+                nim_model=self.model_name,
+                response_format=response_format,
+                ollama_attempts=max_retries,
+            )
+            self.last_call_time = time.time()
+            if not content.strip():
+                raise RuntimeError(f"Empty completion from {self.model_name}")
+            return content
+        except Exception as exc:
+            self.last_call_time = time.time()
+            raise RuntimeError(f"Local LLM inference failed: {exc}") from exc
 
     # -----------------------------------------------------------------------
     # Public entry point

@@ -17,7 +17,6 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from pathlib import Path
-from openai import OpenAI
 import markdown as _md
 import re as _re
 from src.config import settings
@@ -112,11 +111,10 @@ def _get_translation_router():
     return _router
 
 
-def _translate_to_korean_map(client, items: list, model: str = None) -> dict:
+def _translate_to_korean_map(items: list) -> dict:
     """👑 [Ver 4.9] (key, text) 쌍을 일괄 한국어 번역 → {key: korean} 맵.
 
-    **Groq(Llama70BRouter) 우선 → NIM(OpenAI 호환 client) 폴백.**
-    client 는 NIM 폴백용으로만 사용된다(Groq 실패/빈 응답 시).
+    **Groq(Llama70BRouter) 우선 → 공통 실행 계층의 NIM 폴백.**
     원문 결정론적 렌더 원칙 유지: LLM은 '번역'만 수행(재생성·요약 금지).
     빈 항목·파싱 실패 시 원문 그대로(fallback). 청크 단위 호출(출력 절삭 방지).
     """
@@ -136,28 +134,10 @@ def _translate_to_korean_map(client, items: list, model: str = None) -> dict:
         chunk = items[i:i + CHUNK]
         numbered = "\n".join(f"{j+1}. {txt}" for j, (_, txt) in enumerate(chunk))
         user = f"아래 {len(chunk)}개 텍스트를 한국어로 번역해 JSON 배열로 반환:\n\n{numbered}"
-        content = None
         try:
-            # 1) Groq 우선 (Llama70BRouter — Cerebras/Groq 키 로테이션)
-            try:
-                content = router.generate(
-                    system=SYS, user=user, max_tokens=4096, temperature=0.1
-                )
-            except Exception as e:
-                print(f"[WARN] Groq 번역 실패 — NIM 폴백: {e}")
-                if client is not None:
-                    resp = client.chat.completions.create(
-                        model=model,
-                        messages=[
-                            {"role": "system", "content": SYS},
-                            {"role": "user", "content": user},
-                        ],
-                        max_tokens=4096,
-                        temperature=0.1,
-                    )
-                    content = (resp.choices[0].message.content or "").strip()
-                else:
-                    raise
+            content = router.generate(
+                system=SYS, user=user, max_tokens=4096, temperature=0.1
+            )
             arr = _parse_korean_json_array(content or "")
         except Exception as e:
             print(f"[WARN] Korean translation chunk {i//CHUNK} failed: {e}")
@@ -736,10 +716,7 @@ def generate_morning_report(db_path: str, vault_dir: str, api_key: str = None, l
     # 2. Format LLM input feed
     feed_text = format_feed_payload(reports)
 
-    # 3. 번역 라우터의 NIM 폴백용 OpenAI-compatible client.
-    client = OpenAI(base_url=NIM_BASE_URL, api_key=NIM_API_KEY, timeout=TIER2_TIMEOUT)
-
-    # 4. Generate content
+    # 3. Generate content
     print("🤖 Synthesizing daily consensus report via Ollama (deepseek-v4-flash:0731-cloud, NIM 폴백)...")
 
     # KST 보정 — 서버가 UTC라도 한국장 기준 날짜로 라벨링.
@@ -758,26 +735,16 @@ def generate_morning_report(db_path: str, vault_dir: str, api_key: str = None, l
     )
     prompt = f"Today's Date: {today_str}\n\nHere is the raw input data:\n{feed_text}"
 
-    max_retries = 5
-    initial_delay = 5.0
-    backoff_factor = 2.0
     from src import cloud_client
-    for attempt in range(max_retries):
-        try:
-            # 👑 [Ollama 전환] NIM → cloud_client (Ollama Cloud 우선, NIM 폴백)
-            report_content = cloud_client.chat_completion(
-                system=system_msg, user=prompt, max_tokens=4096, temperature=0.2,
-                nim_model=TIER2_MODEL,
-            )
-            break
-        except Exception as e:
-            print(f"[WARN] LLM call error on daily report synthesis attempt {attempt+1}: {e}")
-            if attempt < max_retries - 1:
-                sleep_time = initial_delay * (backoff_factor ** attempt)
-                print(f"   Waiting {sleep_time} seconds before retrying...")
-                time.sleep(sleep_time)
-            else:
-                raise
+    # Provider retries and fallback are centralized to avoid retry-chain multiplication.
+    report_content = cloud_client.chat_completion(
+        system=system_msg,
+        user=prompt,
+        max_tokens=4096,
+        temperature=0.2,
+        nim_model=TIER2_MODEL,
+        ollama_attempts=5,
+    )
 
     report_content = (report_content or "").strip()
     # 빈 응답 가드 — 빈 리포트 저장 방지.
@@ -793,7 +760,7 @@ def generate_morning_report(db_path: str, vault_dir: str, api_key: str = None, l
     tr_items = _collect_translatable(reports)
     if tr_items:
         print(f"🌐 Translating {len(tr_items)} evidence texts to Korean via Groq (Llama70BRouter, NIM 폴백)...")
-        tr_map = _translate_to_korean_map(client, tr_items, model=TIER2_MODEL)
+        tr_map = _translate_to_korean_map(tr_items)
         print(f"   translated {len(tr_map)}/{len(tr_items)} items.")
     else:
         tr_map = {}

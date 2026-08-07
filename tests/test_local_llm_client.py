@@ -1,10 +1,18 @@
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from src.local_llm_client import LocalLLMClient
 
 
 class FullTranscriptTests(unittest.TestCase):
+    def test_chat_delegates_retry_budget_once_to_provider_layer(self):
+        client = LocalLLMClient()
+        completion = Mock(return_value="ok")
+        with patch("src.cloud_client.chat_completion", completion):
+            self.assertEqual(client._chat("system", "user", max_retries=4), "ok")
+        completion.assert_called_once()
+        self.assertEqual(completion.call_args.kwargs["ollama_attempts"], 4)
+
     def test_analyze_transcript_passes_entire_large_input(self):
         transcript = "HEAD" + ("middle-marker " * 7_000) + "TAIL"
         captured = []
