@@ -1,21 +1,29 @@
 import json
 import unittest
+from pathlib import Path
 
 import pandas as pd
 
 from scripts.insight_report import _matrix_headline
 from scripts.insights.market_narrative import _view_line_with_nodes
 from src.orchestrator import (
+    _append_visual_links,
     _extract_viz_json,
     _render_report_block,
     _replace_json_block_with_tables,
     _viz_json_to_markdown,
 )
 from src.report_generator import calculate_deterministic_sentiment
+from src.report_generator import _assemble_daily_outputs
 from src.telegram_bot import TOOL_REGISTRY_INPROC, _chunk_lines, dispatch_tool
 
 
 class DailyReportContractTests(unittest.TestCase):
+    def test_file_and_email_bodies_only_differ_by_frontmatter(self):
+        file_body, email_body = _assemble_daily_outputs("yaml\n", "body", "evidence", "summary")
+        self.assertEqual(file_body, "yaml\nbodyevidencesummary")
+        self.assertEqual(email_body, "bodyevidencesummary")
+
     def test_sentiment_weighting_tail_deduction_and_regime(self):
         result = calculate_deterministic_sentiment([
             {"bull_bear_score": 8, "conviction_score": 2},
@@ -39,6 +47,14 @@ class DailyReportContractTests(unittest.TestCase):
 
 
 class CioReportContractTests(unittest.TestCase):
+    def test_visual_links_keep_declared_order_and_original_body(self):
+        rendered = _append_visual_links("report", {
+            "conflicts": Path("conflicts.html"), "pie": Path("pie.html"), "bar": None,
+        })
+        self.assertTrue(rendered.startswith("report\n\n---"))
+        self.assertLess(rendered.index("pie.html"), rendered.index("conflicts.html"))
+        self.assertEqual(_append_visual_links("report", {}), "report")
+
     def test_visual_json_is_extracted_rendered_and_replaces_fence(self):
         payload = {
             "allocation": [{"asset": "Rates|Cash", "weight": 25, "rationale": "defensive"}],

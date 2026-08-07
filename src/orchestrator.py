@@ -20,6 +20,7 @@ from src.email_delivery import EmailAttachment, send_multipart_email
 from src.derived_llm import DerivedLLMRequest, complete_derived
 from src.json_utils import parse_json_list as _parse_json_list
 from src.report_rendering import markdown_table_cell, markdown_to_email_html, render_frontmatter
+from src.report_artifacts import cio_artifact, write_report_artifact
 
 logger = logging.getLogger(__name__)
 
@@ -425,11 +426,6 @@ def save_report_to_vault(report_content: str) -> Path:
     print("💾 [3/3] Saving generated report to Obsidian Vault...")
     
     today_str = datetime.date.today().strftime("%Y-%m-%d")
-    reports_folder = VAULT_PATH / "reports"
-    reports_folder.mkdir(parents=True, exist_ok=True)
-    
-    report_file = reports_folder / f"Grand_Report_{today_str}.md"
-    
     metadata_header = render_frontmatter((
         ("date", today_str), ("type", "grand_reasoning_report"), ("model", TIER3_MODEL),
         ("provider", "nim"), ("tags", "[macro_strategy, global_macro, asset_allocation]"),
@@ -439,8 +435,7 @@ def save_report_to_vault(report_content: str) -> Path:
     clean_content = _replace_json_block_with_tables(report_content, viz_json)
     full_document = metadata_header + clean_content
 
-    report_file.write_text(full_document, encoding="utf-8")
-    return report_file
+    return write_report_artifact(cio_artifact(VAULT_PATH, today_str, full_document))
 
 # ---------------------------------------------------------------------------
 # E2E Execution Orchestration
@@ -479,6 +474,16 @@ def _send_cio_email_with_visuals(subject: str, body_md: str, viz_paths: dict) ->
         send_email_report(subject, body_md)
 
 
+def _append_visual_links(report_content: str, viz_paths: dict) -> str:
+    labels = (("pie", "자산 배분 파이"), ("bar", "자산 심리 바"),
+              ("conflicts", "핵심 갈등 다이어그램"))
+    links = [f"- **{label}**: {path.as_posix()}" for key, label in labels
+             if (path := viz_paths.get(key))]
+    if not links:
+        return report_content
+    return report_content + "\n\n---\n\n## 📊 시각화\n\n" + "\n".join(links) + "\n"
+
+
 async def run_orchestrator():
     start_time = time.time()
     try:
@@ -492,16 +497,7 @@ async def run_orchestrator():
         viz_paths = _render_cio_visuals(viz_json, viz_dir)
 
         # 본문에 시각화 링크 섹션 추가 (Obsidian/로컬 확인용)
-        viz_links = []
-        for k, label in [("pie", "자산 배분 파이"), ("bar", "자산 심리 바"), ("conflicts", "핵심 갈등 다이어그램")]:
-            p = viz_paths.get(k)
-            if p:
-                viz_links.append(f"- **{label}**: {p.as_posix()}")
-        if viz_links:
-            viz_section = "\n\n---\n\n## 📊 시각화\n\n" + "\n".join(viz_links) + "\n"
-            report_content_with_viz = report_content + viz_section
-        else:
-            report_content_with_viz = report_content
+        report_content_with_viz = _append_visual_links(report_content, viz_paths)
 
         # 👑 메일 발송 — 본문(narrative) + 시각화 HTML 첨부
         today_str = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=9)).date().strftime("%Y-%m-%d")

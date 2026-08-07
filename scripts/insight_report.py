@@ -25,6 +25,7 @@ from src.insights.knowledge_graph import (
 )
 from src.email_delivery import EmailAttachment, send_multipart_email
 from src.report_rendering import markdown_to_email_html
+from src.report_artifacts import insight_artifact, write_report_artifact
 
 
 def build_report(no_llm: bool = False, expiry: str = "timebox") -> tuple[str, dict]:
@@ -241,11 +242,8 @@ def main() -> None:
 
     md, summary = build_report(no_llm=args.no_llm, expiry=args.expiry)
 
-    reports_dir = PROJECT_ROOT / "reports" / "insights"
-    reports_dir.mkdir(parents=True, exist_ok=True)
     today = datetime.now().strftime("%Y-%m-%d")
-    out = reports_dir / f"insight_report_{today}.md"
-    out.write_text(md, encoding="utf-8")
+    out = write_report_artifact(insight_artifact(PROJECT_ROOT, today, md))
     print(f"\n✓ 리포트: {out} ({out.stat().st_size} bytes)")
     print(f"  그래프: 노드 {summary['nodes']} / 엣지 {summary['edges']} / 커뮤 {summary['communities']} / RAG {summary['rag_queries']}")
 

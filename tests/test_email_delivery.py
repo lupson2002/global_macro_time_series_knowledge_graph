@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from scripts.insight_report import send_email_with_visuals
+from scripts.insights.run_market_narrative import send_narrative_email
 from src.email_delivery import EmailAttachment, send_multipart_email
 from src.orchestrator import _send_cio_email_with_visuals
 from src.report_generator import send_email_report
@@ -121,6 +122,17 @@ class PipelineEmailPolicyTests(unittest.TestCase):
         self.assertTrue(send.call_args.kwargs["mixed_root"])
         self.assertNotIn("strip_password_spaces", send.call_args.kwargs)
         fallback.assert_called_once_with("Insight", "body")
+
+    def test_narrative_transport_failure_warns_without_plain_retry(self):
+        fake_settings = SimpleNamespace(email=email_settings())
+        with patch("scripts.insights.run_market_narrative.settings", fake_settings), \
+             patch("scripts.insights.run_market_narrative.send_multipart_email",
+                   side_effect=RuntimeError("offline")) as send:
+            send_narrative_email("body", "Narrative")
+
+        send.assert_called_once()
+        self.assertEqual(send.call_args.kwargs["timeout"], 60)
+        self.assertTrue(send.call_args.kwargs["strip_password_spaces"])
 
 
 if __name__ == "__main__":

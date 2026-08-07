@@ -20,6 +20,7 @@ from src.email_delivery import send_multipart_email
 from src.derived_llm import DerivedLLMRequest, complete_derived
 from src.json_utils import parse_json_list
 from src.report_rendering import markdown_to_email_html as _md_to_html_email, render_frontmatter
+from src.report_artifacts import daily_artifact, write_report_artifact
 
 # src.llm_router 등 src.* 패키지 import 를 위해 프로젝트 루트를 sys.path 에 추가
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -389,6 +390,14 @@ def _build_frontmatter(today_str: str, model: str, source_count: int, kst_iso: s
     ))
 
 
+def _assemble_daily_outputs(
+    frontmatter: str, report_body: str, evidence: str, summary: str,
+) -> tuple[str, str]:
+    """Return the file body (with YAML) and email body (without YAML)."""
+    email_body = report_body + evidence + summary
+    return frontmatter + email_body, email_body
+
+
 def _build_evidence_section(reports: list, top_k: int = 8, tr_map: dict = None) -> str:
     """👑 [Ver 4.3/4.5] '## 5. 핵심 근거 & 직접 인용' — DB 원본에서 결정론적 렌더.
 
@@ -750,18 +759,10 @@ def generate_morning_report(db_path: str, vault_dir: str, api_key: str = None, l
         report_body = report_content
 
     # 파일: frontmatter + 본문 + 섹션5 + 섹션6 / 이메일: 본문 + 섹션5 + 섹션6 (YAML 미노출)
-    file_content = frontmatter + report_body + section5 + section6
-    email_body = report_body + section5 + section6
+    file_content, email_body = _assemble_daily_outputs(frontmatter, report_body, section5, section6)
 
     # 5. Export to Obsidian
-    vault_path = Path(vault_dir)
-    reports_dir = vault_path / "Daily_Reports"
-    reports_dir.mkdir(parents=True, exist_ok=True)
-
-    report_filename = f"Daily_Macro_Synthesis_{today_str}.md"
-    report_file_path = reports_dir / report_filename
-
-    report_file_path.write_text(file_content, encoding="utf-8")
+    report_file_path = write_report_artifact(daily_artifact(vault_dir, today_str, file_content))
     print(f"✓ Daily report successfully saved to: {report_file_path}")
 
     # Send email notification

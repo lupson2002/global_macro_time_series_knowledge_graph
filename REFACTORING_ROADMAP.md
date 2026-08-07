@@ -182,3 +182,21 @@ provider, model, prompt, timeout과 재시도 횟수를 그대로 유지한다.
 
 다음 5차 구현은 네 파생 진입점을 계산·렌더링·delivery adapter를 연결하는 얇은
 orchestration으로 정리하되 파일 경로와 실행 순서를 characterization test로 먼저 고정한다.
+
+## 다섯 번째 구현 파동 5차 결과
+
+- `ReportArtifact`와 공통 writer가 부모 디렉터리 생성, UTF-8 저장과 반환 경로를 담당한다.
+- Daily, CIO, Insight, Narrative의 기존 디렉터리와 대소문자를 포함한 파일명을 순수 path
+  factory와 테스트로 고정했다.
+- Narrative의 일반 report를 먼저, frontmatter가 포함된 Obsidian artifact를 다음에 쓰는
+  선언 순서를 보존했다.
+- Daily 파일 본문과 이메일 본문의 유일한 차이인 frontmatter 경계를
+  `_assemble_daily_outputs`로 분리했다.
+- CIO 시각화 링크는 pie → bar → conflicts 순서를 유지하는 `_append_visual_links`로
+  분리했으며 시각화가 없을 때 원문을 그대로 반환한다.
+- Narrative의 직접 MIME/SMTP 코드를 공통 delivery adapter로 연결하고 60초 timeout,
+  비밀번호 공백 제거, 실패 시 경고-only 정책을 유지했다.
+- 공개 CLI 옵션, 파일 저장 시점, 이메일 발송 순서와 반환형은 변경하지 않았다.
+
+다음 단계는 다섯 번째 구현 파동 전체를 교차 검토하고, 남은 대형 함수의 위험 지표와
+테스트 보호 수준을 다시 측정해 구조화 실행 기록 단계로 넘어갈지 판단하는 안정화 gate다.

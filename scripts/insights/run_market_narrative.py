@@ -16,11 +16,8 @@ Usage:
 """
 from __future__ import annotations
 
-import smtplib
 import sys
 from datetime import datetime, timedelta, timezone
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -30,9 +27,11 @@ if str(PROJECT_ROOT) not in sys.path:
 from src.config import settings  # noqa: E402
 
 # 같은 디렉터리 코어 엔진 (sys.path[0] = scripts/insights)
-from market_narrative import generate_narrative_report, INSIGHT_MODEL  # noqa: E402
+from scripts.insights.market_narrative import generate_narrative_report, INSIGHT_MODEL  # noqa: E402
 from src.report_generator import _resolve_recipients  # noqa: E402
 from src.report_rendering import markdown_to_email_html, render_frontmatter  # noqa: E402
+from src.report_artifacts import narrative_artifacts, write_report_artifacts  # noqa: E402
+from src.email_delivery import send_multipart_email  # noqa: E402
 
 REPORTS_DIR = PROJECT_ROOT / "reports" / "narrative"
 OBSIDIAN_DIR = PROJECT_ROOT / "obsidian_vault" / "Narrative_Reports"
@@ -54,14 +53,10 @@ def _frontmatter(today: str, model: str, source_count: int = 0) -> str:
 
 def save_outputs(md: str, today: str) -> tuple[Path, Path]:
     """마크다운 저장 (reports/narrative + obsidian_vault/Narrative_Reports)."""
-    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-    OBSIDIAN_DIR.mkdir(parents=True, exist_ok=True)
-
-    report_path = REPORTS_DIR / f"market_narrative_{today}.md"
-    report_path.write_text(md, encoding="utf-8")
-
-    vault_path = OBSIDIAN_DIR / f"Market_Narrative_{today}.md"
-    vault_path.write_text(_frontmatter(today, INSIGHT_MODEL) + md, encoding="utf-8")
+    artifacts = narrative_artifacts(
+        REPORTS_DIR, OBSIDIAN_DIR, today, md, _frontmatter(today, INSIGHT_MODEL) + md,
+    )
+    report_path, vault_path = write_report_artifacts(artifacts)
     return report_path, vault_path
 
 
@@ -77,17 +72,12 @@ def send_narrative_email(md: str, subject: str) -> None:
         return
 
     html_body = markdown_to_email_html(md)
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"] = user
-    msg["To"] = ", ".join(recipients)
-    msg.attach(MIMEText(md, "plain", "utf-8"))
-    msg.attach(MIMEText(html_body, "html", "utf-8"))
-
     try:
-        with smtplib.SMTP_SSL(host, port, timeout=60) as s:
-            s.login(user, pwd.replace(" ", ""))
-            s.sendmail(user, recipients, msg.as_string())
+        send_multipart_email(
+            subject=subject, body_text=md, body_html=html_body,
+            user=user, password=pwd, recipients=recipients, host=host, port=port,
+            timeout=60, strip_password_spaces=True,
+        )
         print(f"✓ 내러티브 메일 발송 완료 → {', '.join(recipients)}")
     except Exception as e:  # noqa: BLE001
         print(f"⚠️ 내러티브 메일 발송 실패: {e}")

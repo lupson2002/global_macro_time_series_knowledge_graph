@@ -31,6 +31,9 @@ characterization test로 고정한 안전 기준선이다. 이 단계에서는 �
    typed request/result가 Daily, CIO, Insight, Narrative의 pipeline·provider·model·latency·
    attempt 이력을 연결하며 기존 공개 함수는 계속 문자열을 반환한다.
 5. 마지막으로 네 진입점을 순수 계산과 외부 부작용을 연결하는 얇은 orchestration으로 줄인다.
+   **17단계 완료:** `src/report_artifacts.py`가 경로 계획·부모 생성·UTF-8 저장을 담당하고,
+   Daily 본문 조립과 CIO 시각화 링크 조립을 순수 helper로 분리했다. Narrative도 공통
+   delivery adapter를 사용하되 기존 경고-only 정책을 유지한다.
 
 ## 변경 금지 범위
 
