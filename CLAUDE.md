@@ -15,7 +15,8 @@ Compile: `.venv/bin/python -m compileall -q main.py src scripts publish_all_blog
 - Large inputs may fail explicitly on provider context/timeout limits; do not silently drop content.
 
 ## Structure
-- `main.py` — RSS/video orchestration, idempotency, relevance gate, persistence.
+- `main.py` — CLI target discovery, progress counters and backfill entry point.
+- `src/pipeline.py` — single-video idempotency, ingestion, analysis, relevance and persistence outcomes.
 - `src/ingestion.py` — YouTube RSS and transcript acquisition with yt-dlp fallback.
 - `src/local_llm_client.py` — extraction schemas, prompts, JSON recovery and normalization.
 - `src/cloud_client.py`, `src/llm_router.py` — LLM provider routing.

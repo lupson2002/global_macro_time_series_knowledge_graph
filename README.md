@@ -52,7 +52,8 @@ SQLite가 정형 원본이며 Obsidian과 LanceDB는 재생성 가능한 파생 
 
 | 파일 | 역할 |
 |---|---|
-| `main.py` | 영상/RSS 수집, 중복 방지, 구조화, 저장 오케스트레이션 |
+| `main.py` | CLI 대상 탐색, 진행 집계, DB→Markdown backfill 진입점 |
+| `src/pipeline.py` | 단일 영상 처리 서비스, 단계별 결과·중단·부분 저장 상태 |
 | `src/ingestion.py` | YouTube RSS·transcript·yt-dlp 폴백 |
 | `src/local_llm_client.py` | Pydantic 스키마, 프롬프트, JSON 복구/Validation |
 | `src/cloud_client.py` | Ollama Cloud 우선 + NIM 폴백 |
@@ -168,6 +169,7 @@ LLM 호출은 공통 provider 실행 계층이 재시도와 fallback을 한 번�
 
 - 대형 transcript는 전체를 보존하므로 provider context/timeout 한계에 도달할 수 있습니다.
 - SQLite·Obsidian·LanceDB에 분산 저장하므로 중간 실패 후 reconciliation이 필요할 수 있습니다.
+- 단일 영상 결과는 성공·스킵·실패·큐 중단 및 실패 단계로 구분됩니다. Markdown 저장이 완료되어야 SQLite 완료 마커를 기록하므로 Markdown 실패 영상은 다음 실행에서 재시도됩니다.
 - 정식 회귀 테스트 커버리지가 아직 낮습니다.
 - 비활성 Tier 3/4 channel ID는 운영 전 검증이 필요합니다.
 - 블로그 발행은 외부 플랫폼 로그인 세션에 의존합니다.

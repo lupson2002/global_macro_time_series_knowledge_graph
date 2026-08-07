@@ -14,12 +14,12 @@ Discovery -> Ingestion -> Analysis -> Relevance gate -> Persistence -> Derived p
 
 1. `main.py` 가 `configs/channels.json`의 활성 tier를 로드한다.
 2. `src.ingestion.fetch_video_ids_from_channel()`이 RSS에서 `(video_id, pub_date)`를 얻는다.
-3. `check_processed()`가 SQLite `reports`/`skipped_videos`를 조회해 멱등성을 보장한다.
+3. `src.pipeline.PipelineService`가 단일 영상의 precheck부터 저장까지 조정하며 `check_processed()`로 SQLite `reports`/`skipped_videos`를 조회한다.
 4. `get_youtube_transcript()`가 youtube-transcript-api를 시도하고 yt-dlp로 폴백한다.
 5. `LocalLLMClient.analyze_transcript()`가 원문 전체를 절삭 없이 single-shot으로 전달한다.
 6. JSON을 sanitize/parse하고 Pydantic soft validation과 Obsidian backlink 보정을 적용한다.
 7. `is_macro_relevant()`가 티커, 전술 신호, 비중립 점수를 기준으로 저장 여부를 결정한다.
-8. SQLite에 저장한 뒤 Obsidian Markdown와 LanceDB 인덱스를 갱신한다.
+8. Obsidian Markdown을 먼저 기록하고 SQLite를 완료 마커로 저장한다. Markdown 실패 시 DB에 완료 표시를 남기지 않아 다음 실행에서 재시도할 수 있다.
 
 ## 3. LLM architecture
 
@@ -40,7 +40,6 @@ Ollama Cloud (up to 3 attempts)
 - Ollama에서 reasoning 토큰이 content 예산을 소진하지 않도록 `think=False`를 사용한다.
 - Ollama/OpenAI client는 lazy singleton으로 재사용한다.
 - `LocalLLMClient._chat()`도 이 공통 client를 사용한다.
-- `LocalLLMClient.__init__()`의 OpenAI client 필드는 현재 호출 경로에서 사용되지 않으며 후속 리팩토링 대상이다.
 
 ### Translation/high-frequency generation
 
@@ -114,8 +113,10 @@ TurboVec server와 `.tvim` 인덱스는 현재 아키텍처에 존재하지 않�
 
 ## 7. Failure semantics
 
-- 영상 단위 ingestion/LLM/export 실패는 카운트하고 다음 영상으로 진행한다.
-- YouTube IP block 패턴이면 남은 큐를 중단한다.
+- `PipelineResult`가 `SUCCESS`, `SKIPPED`, `FAILED`, `ABORTED`와 실패 단계(`PRECHECK`, `INGESTION`, `ANALYSIS`, `RELEVANCE`, `STORAGE`)를 반환한다.
+- 영상 단위 ingestion/LLM/export 실패는 CLI가 카운트하고 다음 영상으로 진행한다.
+- YouTube IP block 패턴은 `ABORTED`로 반환되어 남은 큐를 중단한다.
+- Markdown 저장 실패 시 SQLite 저장을 실행하지 않는다. SQLite 저장 실패 시 이미 생성된 Markdown 경로와 `markdown_saved_database_pending` 경고를 결과에 남긴다.
 - 일부 영상이 실패해도 `main.py`는 0으로 종료할 수 있어 wrapper에서 SUCCESS로 표시될 수 있다.
 - SQLite, Obsidian, LanceDB는 하나의 ACID transaction으로 묶이지 않는다.
 - 대형 transcript는 절삭하지 않으며 provider 한계 시 해당 영상 분석이 실패한다.
@@ -136,8 +137,6 @@ TurboVec server와 `.tvim` 인덱스는 현재 아키텍처에 존재하지 않�
 
 ## 9. Known refactoring targets
 
-- LLM 설정·retry·timeout·model 중앙화
-- `LocalLLMClient` 내 미사용 OpenAI client 제거
 - 스키마를 도메인 모듈로 분리
 - 저장소 간 reconciliation/status 추가
 - partial success를 exit status와 구조화 로그로 표현

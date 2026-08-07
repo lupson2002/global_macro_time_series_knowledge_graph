@@ -16,15 +16,21 @@ Usage:
 import argparse
 import re
 import sys
-import time
-import sqlite3
 from pathlib import Path
 from tqdm import tqdm
 
 # Import modules from src
-from src.ingestion import get_youtube_transcript, fetch_video_ids_from_channel
+from src.ingestion import fetch_video_ids_from_channel
 from src.local_llm_client import LocalLLMClient
 from src.exporter import SQLiteExporter, ObsidianMDExporter
+from src.pipeline import (
+    PipelineService,
+    PipelineStage,
+    PipelineStatus,
+    VideoTarget,
+    check_processed,
+    is_macro_relevant,
+)
 
 # 👑 [Ver 3.1] 76 매크로 채널 풀 (요건 2: Backfill Roster)
 # Stage 2 is now deepseek-ai/deepseek-v4-flash via nvidia-api-proxy (localhost:8000).
@@ -73,66 +79,6 @@ DEFAULT_CHANNELS = {
     "CNBC": "UCvJJ_dzjViJCoLf5uKUTwoA",
     "Yahoo_Finance": "UCxZG-dvg0cLQsgCln7DBHKw",
 }
-
-def check_processed(db_path: str, video_id: str, include_skipped: bool = True) -> bool:
-    """Helper to check if a video_id is already processed in SQLite.
-
-    reports(성공) 또는 skipped_videos(게이트키퍼 스킵) 에 존재하면 True.
-    👑 [2026-08-06 H2] 스킵 영상도 영속화되어 다음 크론에서 재수집+재LLM 방지.
-    reports 를 우선 조회 — 스킵 후 재처리 성공 시에도 정상 판정.
-
-    `with sqlite3.connect(...)` 로 연결을 컨텍스트 매니저가 관리 — 예외 시에도
-    close 보장(이전 try/except 가 conn.close() 를 감싸지 않아 누수 가능했음).
-    """
-    if not Path(db_path).exists():
-        return False
-    try:
-        with sqlite3.connect(db_path) as conn:
-            cur = conn.cursor()
-            cur.execute("SELECT 1 FROM reports WHERE video_id = ?", (video_id,))
-            if cur.fetchone() is not None:
-                return True
-            if include_skipped:
-                cur.execute("SELECT 1 FROM skipped_videos WHERE video_id = ?", (video_id,))
-                return cur.fetchone() is not None
-            return False
-    except Exception:
-        # skipped_videos 테이블 미존재(구DB) 시 include_skipped 조회 실패 → 전체 False
-        # (보수적: 재수집 허용, 크래시 없음)
-        return False
-
-
-def is_macro_relevant(data: dict) -> bool:
-    """추출된 MacroViewSchema dict 가 실제 매크로 분석 가치가 있는지 검사 (게이트키퍼).
-
-    '의미 있는 매크로 신호' 기준 — 아래 중 하나라도 있으면 유지(True):
-      - specific_tickers 에 실제 티커 존재 (예: [[NVDA]])
-      - 매크로 전술 신호: duration_call / macro_factor / view_time_horizon
-      - bull_bear_score 또는 conviction_score 가 중립 5 가 아님
-
-    ⚠️ sector_tilt 는 신호에서 제외 — deepseek-v4-flash 가 홍보/제품 영상에도
-    과추출함(예: 식품보존 홍보 → sector_tilt=[[Food Technology]]). 티커·매크로요인·
-    듀레이션·시간지평·비중립 점수가 없이 중립 5/5면 홍보/소음으로 스킵.
-    (스펙의 '노드 0개 & 신호 0개'만으론 잡히지 않아 보강)
-    """
-    gn = data.get("graph_nodes", {}) or {}
-    tickers = [t for t in (gn.get("specific_tickers") or []) if t]
-
-    qs = data.get("quant_signals", {}) or {}
-    bb = qs.get("bull_bear_score")
-    conv = qs.get("conviction_score")
-    has_tactical = any(qs.get(k) for k in (
-        "duration_call", "macro_factor", "view_time_horizon"))
-
-    # 의미 있는 매크로 신호: 실제 티커 OR 매크로 전술 신호 OR 비중립 심리/확신 점수
-    has_signal = (
-        bool(tickers)
-        or has_tactical
-        or (bb is not None and bb != 5)
-        or (conv is not None and conv != 5)
-    )
-    return has_signal
-
 
 def main():
     parser = argparse.ArgumentParser(description="Global Macro Time-Series Knowledge Graph Pipeline (Ver 3.0)")
@@ -184,6 +130,12 @@ def main():
     except Exception as err:
         print(f"❌ Initialization failure: {err}")
         sys.exit(1)
+    pipeline = PipelineService(
+        db_path=str(db_file_path),
+        llm_client=client,
+        sqlite_exporter=sqlite_exporter,
+        obsidian_exporter=obsidian_exporter,
+    )
 
     # Collect target Video IDs
     video_targets = []  # List of tuples (video_id, source_name, upload_date)
@@ -284,72 +236,34 @@ def main():
     pbar = tqdm(unique_targets, desc="Processing Pipeline", disable=not sys.stderr.isatty())
     for video_id, source_channel, upload_date in pbar:
         pbar.set_postfix_str(f"Success: {success_count} | Skip: {skip_count} | Fail: {fail_count}")
-
-        # 👑 [Pre-Ingestion Skip Optimization] (요건 2)
-        # Check database before any ingestion or API calls
-        if not args.overwrite and check_processed(str(db_file_path), video_id):
-            skip_count += 1
-            tqdm.write(f"ℹ️ [FAST SKIP] Video '{video_id}' already processed in SQLite. Skipping ingestion.")
-            continue
-
         tqdm.write(f"\n🎬 Processing: {video_id} (Source: {source_channel})")
-
-        # 1. YouTube Ingestion
-        try:
-            # 👑 [Ver 3.0] Local LLM ⇒ RPD-free. Delay is now configurable.
-            if args.ingest_delay > 0 and (success_count + fail_count) > 0:
-                tqdm.write(f"   ⏳ Ingest delay: {args.ingest_delay}s...")
-                time.sleep(args.ingest_delay)
-                
-            tqdm.write("   📥 Ingesting transcript from YouTube...")
-            transcript = get_youtube_transcript(video_id)
-            tqdm.write(f"   ✓ Transcript loaded ({len(transcript):,} characters).")
-        except Exception as e:
-            err_msg = str(e)
-            tqdm.write(f"   ❌ Ingestion failed: {err_msg}")
-            fail_count += 1
-            
-            # 🚨 [YouTube IP 차단 감지 시 조기 중단 방어]
-            # 차단 상태에서 계속 찔러서 차단 기간이 영구 누적/연장되는 것을 방지하기 위해 큐를 조기 드롭합니다.
-            if "blocking requests from your IP" in err_msg or "blocking your requests" in err_msg or "IPBlocked" in err_msg:
-                tqdm.write("⚠️ [CRITICAL] YouTube IP Block (Ban) detected! Aborting remaining pipeline queue to let the IP recover.")
-                break
-            continue
-
-        # 2. LLM Analysis (Ollama Cloud primary, NIM proxy fallback)
-        try:
-            if args.llm_delay > 0 and (success_count + fail_count) > 0:
-                tqdm.write(f"   ⏳ LLM delay: {args.llm_delay}s...")
-                time.sleep(args.llm_delay)
-            tqdm.write(f"   🤖 Generating structured macroeconomic view (NIM fallback: {client.model_name})...")
-            extracted_data = client.analyze_transcript(transcript, video_id, source_channel=source_channel, upload_date=upload_date)
-            tqdm.write("   ✓ Structured JSON generated successfully.")
-        except Exception as e:
-            # 👑 [2026-08-06 M3] 전체 traceback(수십 줄) 로그 제거 → 단축(예외 타입+메시지).
-            tqdm.write(f"   ❌ LLM Analysis failed: {type(e).__name__}: {e}")
-            fail_count += 1
-            continue
-
-        # 3. Dual Storage Export — 매크로 가치 게이트키퍼 (홍보/소음 영상 스킵)
-        try:
-            if not is_macro_relevant(extracted_data):
-                tqdm.write(f"   ⏭️ [SKIP] 매크로 가치 없는 영상(홍보/소음): {video_id}")
-                # 👑 [2026-08-06 H2] 스킵 영상 영속화 → 다음 크론 재수집 방지 (멱등화).
-                try:
-                    sqlite_exporter.mark_skipped(video_id, reason="not_macro_relevant")
-                except Exception:
-                    pass
-                skip_count += 1
-                continue
-            tqdm.write("   💾 Exporting to SQLite DB and Obsidian Markdown...")
-            sqlite_exporter.export_data(extracted_data)
-            md_path = obsidian_exporter.export_markdown(extracted_data)
-            tqdm.write(f"   ✓ Saved Markdown to: {md_path.name}")
+        result = pipeline.process(
+            VideoTarget(video_id, source_channel, upload_date),
+            overwrite=args.overwrite,
+            apply_delays=(success_count + fail_count) > 0,
+            ingest_delay=args.ingest_delay,
+            llm_delay=args.llm_delay,
+        )
+        if result.status is PipelineStatus.SUCCESS:
             success_count += 1
-        except Exception as e:
-            tqdm.write(f"   ❌ Dual Storage Export failed: {e}")
+            tqdm.write(
+                f"   ✓ Processed {result.transcript_chars:,} transcript chars; "
+                f"saved Markdown to: {result.markdown_path.name}"
+            )
+        elif result.status is PipelineStatus.SKIPPED:
+            skip_count += 1
+            label = "FAST SKIP" if result.stage is PipelineStage.PRECHECK else "SKIP"
+            tqdm.write(f"   ⏭️ [{label}] {video_id}: {result.message}")
+        else:
             fail_count += 1
-            continue
+            tqdm.write(f"   ❌ {result.stage.value} failed: {result.message}")
+            if result.abort_queue:
+                tqdm.write(
+                    "⚠️ [CRITICAL] YouTube IP block detected; aborting remaining queue."
+                )
+                break
+        for warning in result.warnings:
+            tqdm.write(f"   ⚠️ {warning}")
 
     print("=" * 60)
     print("🏁 Pipeline run finished.")
