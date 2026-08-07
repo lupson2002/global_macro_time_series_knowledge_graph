@@ -225,3 +225,13 @@ orchestration으로 정리하되 파일 경로와 실행 순서를 characterizat
   그대로 유지한다.
 - report lifecycle은 같은 schema에서 사용할 수 있도록 계약을 고정했고, 파생 report
   entrypoint 연결은 각 CLI의 공개 옵션을 함께 설계하는 후속 additive 단계로 남겼다.
+
+## 여섯 번째 구현 파동 2차 결과
+
+- Daily, CIO, Insight, Narrative 공개 CLI에 `--event-log`를 opt-in 옵션으로 추가했다.
+  호환성을 위해 `--event_log` 별칭도 허용한다.
+- 네 진입점 모두 run/report lifecycle과 단일 `run_id`를 공유하며 실제 종료 지점을
+  aggregation/generation/storage/delivery stage로 기록한다.
+- 예외 메시지와 report 본문은 journal에 넣지 않고 예외 형식만 기록한다.
+- sink 중단은 report 성공 여부에 영향을 주지 않으며, Insight/Narrative의 예외 전파와
+  CIO의 경고 후 반환 정책을 그대로 유지했다.

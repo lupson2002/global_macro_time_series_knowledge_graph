@@ -69,3 +69,10 @@ lifecycle은 실제 CLI에 연결했고 report lifecycle은 동일 schema의 직
 고정했다. sink 미지정 시 추가 쓰기가 없고, 첫 sink 쓰기 중단은 경고 후 관측 기능만
 비활성화하므로 기존 처리 결과와 종료 코드를 바꾸지 않는다. transcript와 prompt 같은
 대용량·민감 payload는 기록 대상에서 제외했다.
+
+## Stage 20 result
+
+Stage 19의 report lifecycle 계약을 Daily, CIO, Insight, Narrative 실제 진입점에 연결했다.
+모든 연결은 `--event-log`를 지정할 때만 활성화되며 기존 리포트 생성·저장·메일 순서와
+각 진입점의 예외 정책을 보존한다. journal에는 파이프라인 이름, 상태, 종료 stage와
+예외 형식만 기록하고 생성 본문이나 예외 메시지는 기록하지 않는다.

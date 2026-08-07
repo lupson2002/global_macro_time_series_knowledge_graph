@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import Mock
 
-from src.run_events import JsonlEventSink, SafeEventEmitter
+from src.run_events import JsonlEventSink, ReportRunJournal, RunJournal, SafeEventEmitter
 
 
 class RunEventTests(unittest.TestCase):
@@ -61,3 +61,18 @@ class RunEventTests(unittest.TestCase):
         sink.emit.assert_called_once()
         warn.assert_called_once()
         self.assertIn("disk full", warn.call_args.args[0])
+
+    def test_report_run_journal_pairs_run_and_report_lifecycle(self):
+        sink = Mock()
+        journal = ReportRunJournal(RunJournal(SafeEventEmitter(sink, warn=self.fail), "run-1"), "cio")
+
+        journal.started()
+        journal.finished(success=False, stage="generation", error=ValueError("private"))
+
+        records = [item.args[0].as_dict() for item in sink.emit.call_args_list]
+        self.assertEqual(
+            [record["event"] for record in records],
+            ["run.started", "report.started", "report.finished", "run.finished"],
+        )
+        self.assertEqual(records[2]["details"], {"error_type": "ValueError"})
+        self.assertNotIn("private", json.dumps(records))

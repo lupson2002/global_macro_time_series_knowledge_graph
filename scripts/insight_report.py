@@ -26,6 +26,7 @@ from src.insights.knowledge_graph import (
 from src.email_delivery import EmailAttachment, send_multipart_email
 from src.report_rendering import markdown_to_email_html
 from src.report_artifacts import insight_artifact, write_report_artifact
+from src.run_events import ReportRunJournal
 
 
 def build_report(no_llm: bool = False, expiry: str = "timebox") -> tuple[str, dict]:
@@ -231,25 +232,38 @@ def _matrix_headline(df, kind: str) -> str:
     return ""
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     import argparse
     ap = argparse.ArgumentParser()
     ap.add_argument("--no-send", action="store_true")
     ap.add_argument("--no-llm", action="store_true")
     ap.add_argument("--expiry", choices=["timebox", "all"], default="timebox",
                     help="timebox=time_box 유효기간(만료 제외, 기본) | all=전체 DB")
-    args = ap.parse_args()
+    ap.add_argument("--event-log", "--event_log", dest="event_log",
+                    help="Append report lifecycle events to this JSONL file")
+    args = ap.parse_args(argv)
+    event_path = PROJECT_ROOT / args.event_log if args.event_log else None
+    journal = ReportRunJournal.from_path(event_path, "insight", warn=lambda message: print(f"[WARN] {message}"))
+    journal.started()
 
-    md, summary = build_report(no_llm=args.no_llm, expiry=args.expiry)
+    stage = "generation"
+    try:
+        md, summary = build_report(no_llm=args.no_llm, expiry=args.expiry)
 
-    today = datetime.now().strftime("%Y-%m-%d")
-    out = write_report_artifact(insight_artifact(PROJECT_ROOT, today, md))
-    print(f"\n✓ 리포트: {out} ({out.stat().st_size} bytes)")
-    print(f"  그래프: 노드 {summary['nodes']} / 엣지 {summary['edges']} / 커뮤 {summary['communities']} / RAG {summary['rag_queries']}")
+        stage = "storage"
+        today = datetime.now().strftime("%Y-%m-%d")
+        out = write_report_artifact(insight_artifact(PROJECT_ROOT, today, md))
+        print(f"\n✓ 리포트: {out} ({out.stat().st_size} bytes)")
+        print(f"  그래프: 노드 {summary['nodes']} / 엣지 {summary['edges']} / 커뮤 {summary['communities']} / RAG {summary['rag_queries']}")
 
-    if not args.no_send:
-        subject = f"🧠 QuantMind 인사이트 리포트 - {today}"
-        send_email_with_visuals(md, summary, subject)
+        if not args.no_send:
+            stage = "delivery"
+            subject = f"🧠 QuantMind 인사이트 리포트 - {today}"
+            send_email_with_visuals(md, summary, subject)
+    except Exception as exc:
+        journal.finished(success=False, stage=stage, error=exc)
+        raise
+    journal.finished(success=True, stage="delivery")
 
 
 if __name__ == "__main__":

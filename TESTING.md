@@ -27,6 +27,7 @@ The suite uses temporary directories and mocks. It does not require network acce
 - `test_pipeline_service.py`: full-transcript handoff, typed stage failures, IP-block abort, delay policy and retryable partial storage.
 - `test_main_cli.py`: CLI defaults, target ordering/deduplication, tier selection, backfill ID handling, delay sequencing, exit status, and opt-in lifecycle event order.
 - `test_run_events.py`: stable run/video/report JSON schema, UTF-8 JSONL append, disabled no-op, and fail-open sink policy.
+- `test_report_cli_events.py`: Daily/CIO/Insight/Narrative opt-in lifecycle order, shared run ID, failure stage, and preserved CIO exception policy.
 - `test_domain.py`: read-only schema sections, malformed-section isolation, list copy safety, and canonical vector projection.
 - `test_projections.py`: canonical LanceDB projection and explicit false-upsert failure.
 - `test_reconciliation.py`: drift planning, read-only audit, explicit apply guard, backup integrity, missing-only repair, and batched vector repair ordering.

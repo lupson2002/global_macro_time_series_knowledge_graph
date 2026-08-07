@@ -21,6 +21,7 @@ from src.derived_llm import DerivedLLMRequest, complete_derived
 from src.json_utils import parse_json_list as _parse_json_list
 from src.report_rendering import markdown_table_cell, markdown_to_email_html, render_frontmatter
 from src.report_artifacts import cio_artifact, write_report_artifact
+from src.run_events import ReportRunJournal
 
 logger = logging.getLogger(__name__)
 
@@ -484,11 +485,18 @@ def _append_visual_links(report_content: str, viz_paths: dict) -> str:
     return report_content + "\n\n---\n\n## 📊 시각화\n\n" + "\n".join(links) + "\n"
 
 
-async def run_orchestrator():
+async def run_orchestrator(event_log: Path | None = None):
     start_time = time.time()
+    journal = ReportRunJournal.from_path(
+        event_log, "cio", warn=lambda message: print(f"[WARN] {message}")
+    )
+    journal.started()
+    stage = "aggregation"
     try:
         context_data = await aggregate_macro_context()
+        stage = "generation"
         report_content = await query_reasoner_llm(context_data)
+        stage = "storage"
         saved_path = save_report_to_vault(report_content)
 
         # 👑 시각화 3종 (A 자산배분 파이 / B 자산심리 바 / C 핵심갈등 다이어그램)
@@ -502,6 +510,7 @@ async def run_orchestrator():
         # 👑 메일 발송 — 본문(narrative) + 시각화 HTML 첨부
         today_str = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=9)).date().strftime("%Y-%m-%d")
         email_subject = f"📊 주간 매크로 CIO 전략 리포트 (Grand Reasoning Report) - {today_str}"
+        stage = "delivery"
         _send_cio_email_with_visuals(email_subject, report_content_with_viz, viz_paths)
 
         elapsed = time.time() - start_time
@@ -513,10 +522,23 @@ async def run_orchestrator():
         print(f"   Time elapsed: {elapsed:.2f} seconds")
         print("   📨 Email sent to GMAIL_USER (주간 CIO 전략 리포트 + 시각화 첨부)")
         print("=" * 60)
+        journal.finished(success=True, stage="delivery")
     except Exception as e:
+        journal.finished(success=False, stage=stage, error=e)
         print(f"❌ Orchestration failed: {e}")
         import traceback
         traceback.print_exc()
 
+def main(argv: list[str] | None = None) -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Grand Reasoner Orchestrator")
+    parser.add_argument("--event-log", "--event_log", dest="event_log",
+                        help="Append report lifecycle events to this JSONL file")
+    args = parser.parse_args(argv)
+    event_path = PROJECT_ROOT / args.event_log if args.event_log else None
+    asyncio.run(run_orchestrator(event_path))
+
+
 if __name__ == "__main__":
-    asyncio.run(run_orchestrator())
+    main()

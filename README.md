@@ -136,18 +136,18 @@ python scripts/reconcile_storage.py --markdown-only
 python scripts/reconcile_storage.py --markdown-only --apply --yes
 
 # Daily
-python src/report_generator.py --lookback_hours 24
+python src/report_generator.py --lookback_hours 24 --event-log logs/report-events.jsonl
 
 # CIO: package import 경로를 위해 -m 사용
-python -m src.orchestrator
+python -m src.orchestrator --event-log logs/report-events.jsonl
 
 # MCP / Telegram
 python -m src.mcp_server
 python -m src.telegram_bot
 
 # 인사이트 / 마켓 내러티브
-python scripts/insight_report.py
-python scripts/insights/run_market_narrative.py
+python scripts/insight_report.py --event-log logs/report-events.jsonl
+python scripts/insights/run_market_narrative.py --event-log logs/report-events.jsonl
 ```
 
 `--event_log`를 생략하면 추가 디렉터리나 파일을 만들지 않습니다. 지정하면 각 줄에 동일한
@@ -155,6 +155,10 @@ python scripts/insights/run_market_narrative.py
 추가합니다. 상태·단계·처리 문자 수와 집계만 기록하며 transcript, prompt, API key는
 기록하지 않습니다. 이벤트 파일 쓰기가 중단되어도 기존 콘솔 출력과 파이프라인 종료 코드는
 유지됩니다.
+
+Daily, CIO, Insight, Narrative도 같은 파일에 `run.started`, `report.started`,
+`report.finished`, `run.finished`를 추가할 수 있습니다. `report`에는 파이프라인 이름이,
+`stage`에는 aggregation/generation/storage/delivery 중 실제 종료 지점이 기록됩니다.
 
 ## 자동화 랩퍼
 

@@ -32,6 +32,7 @@ from src.report_generator import _resolve_recipients  # noqa: E402
 from src.report_rendering import markdown_to_email_html, render_frontmatter  # noqa: E402
 from src.report_artifacts import narrative_artifacts, write_report_artifacts  # noqa: E402
 from src.email_delivery import send_multipart_email  # noqa: E402
+from src.run_events import ReportRunJournal  # noqa: E402
 
 REPORTS_DIR = PROJECT_ROOT / "reports" / "narrative"
 OBSIDIAN_DIR = PROJECT_ROOT / "obsidian_vault" / "Narrative_Reports"
@@ -83,7 +84,7 @@ def send_narrative_email(md: str, subject: str) -> None:
         print(f"⚠️ 내러티브 메일 발송 실패: {e}")
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     import argparse
 
     ap = argparse.ArgumentParser(description="Market Narrative Search Engine Report 실행기")
@@ -92,23 +93,36 @@ def main() -> None:
     ap.add_argument("--expiry", choices=["timebox", "all"], default="timebox",
                     help="timebox=time_box 유효기간(기본) | all=전체 DB")
     ap.add_argument("--top-k", type=int, default=5)
-    args = ap.parse_args()
+    ap.add_argument("--event-log", "--event_log", dest="event_log",
+                    help="Append report lifecycle events to this JSONL file")
+    args = ap.parse_args(argv)
+    event_path = PROJECT_ROOT / args.event_log if args.event_log else None
+    journal = ReportRunJournal.from_path(event_path, "narrative", warn=lambda message: print(f"[WARN] {message}"))
+    journal.started()
 
-    today = datetime.now().strftime("%Y-%m-%d")
-    print(f"🧠 마켓 내러티브 서치 엔진 리포트 시작 ({today})...")
-    md = generate_narrative_report(
-        use_timebox=args.expiry == "timebox", top_k=args.top_k, no_llm=args.no_llm,
-    )
+    stage = "generation"
+    try:
+        today = datetime.now().strftime("%Y-%m-%d")
+        print(f"🧠 마켓 내러티브 서치 엔진 리포트 시작 ({today})...")
+        md = generate_narrative_report(
+            use_timebox=args.expiry == "timebox", top_k=args.top_k, no_llm=args.no_llm,
+        )
 
-    report_path, vault_path = save_outputs(md, today)
-    print(f"✓ 리포트: {report_path} ({report_path.stat().st_size} bytes)")
-    print(f"✓ Obsidian 동기화: {vault_path}")
+        stage = "storage"
+        report_path, vault_path = save_outputs(md, today)
+        print(f"✓ 리포트: {report_path} ({report_path.stat().st_size} bytes)")
+        print(f"✓ Obsidian 동기화: {vault_path}")
 
-    if not args.no_send:
-        subject = f"🎯 마켓 내러티브 & 핵심 병목 진단 리포트 - {today}"
-        send_narrative_email(md, subject)
+        if not args.no_send:
+            stage = "delivery"
+            subject = f"🎯 마켓 내러티브 & 핵심 병목 진단 리포트 - {today}"
+            send_narrative_email(md, subject)
 
-    print("🏁 내러티브 리포트 완료.")
+        print("🏁 내러티브 리포트 완료.")
+    except Exception as exc:
+        journal.finished(success=False, stage=stage, error=exc)
+        raise
+    journal.finished(success=True, stage="delivery")
 
 
 if __name__ == "__main__":

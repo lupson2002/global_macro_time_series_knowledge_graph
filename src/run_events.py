@@ -149,6 +149,23 @@ class RunJournal:
             },
         )
 
+    def report_started(self, report: str) -> None:
+        self._emitter.emit(
+            "report.started", "running", self.run_id, report=report
+        )
+
+    def report_finished(
+        self,
+        report: str,
+        status: EventStatus,
+        stage: str,
+        details: Mapping[str, object] | None = None,
+    ) -> None:
+        self._emitter.emit(
+            "report.finished", status, self.run_id,
+            report=report, stage=stage, details=details,
+        )
+
     def run_finished(
         self,
         exit_code: int,
@@ -165,3 +182,37 @@ class RunJournal:
             stage=stage,
             details=details,
         )
+
+
+class ReportRunJournal:
+    """Record one derived-report invocation without owning its control flow."""
+
+    def __init__(self, run: RunJournal, report: str) -> None:
+        self._run = run
+        self.report = report
+
+    @classmethod
+    def from_path(
+        cls,
+        path: Path | None,
+        report: str,
+        *,
+        warn: Callable[[str], None],
+    ) -> ReportRunJournal:
+        return cls(RunJournal.from_path(path, warn=warn), report)
+
+    def started(self) -> None:
+        self._run.run_started("report")
+        self._run.report_started(self.report)
+
+    def finished(
+        self,
+        *,
+        success: bool,
+        stage: str,
+        error: BaseException | None = None,
+    ) -> None:
+        status: EventStatus = "success" if success else "failed"
+        details = {"error_type": type(error).__name__} if error else {}
+        self._run.report_finished(self.report, status, stage, details)
+        self._run.run_finished(0 if success else 1, stage=stage)

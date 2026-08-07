@@ -21,6 +21,7 @@ from src.derived_llm import DerivedLLMRequest, complete_derived
 from src.json_utils import parse_json_list
 from src.report_rendering import markdown_to_email_html as _md_to_html_email, render_frontmatter
 from src.report_artifacts import daily_artifact, write_report_artifact
+from src.run_events import ReportRunJournal
 
 # src.llm_router 등 src.* 패키지 import 를 위해 프로젝트 루트를 sys.path 에 추가
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -771,20 +772,31 @@ def generate_morning_report(db_path: str, vault_dir: str, api_key: str = None, l
 
     return file_content
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> int:
     import argparse
     parser = argparse.ArgumentParser(description="Morning Macro Synthesis Agent")
     parser.add_argument("--db_path", default="data/macro_knowledge.db", help="SQLite DB path")
     parser.add_argument("--vault_dir", default="obsidian_vault", help="Obsidian Vault dir path")
     parser.add_argument("--lookback_hours", type=int, default=24, help="Hours to look back for new views")
-    args = parser.parse_args()
+    parser.add_argument("--event-log", "--event_log", dest="event_log",
+                        help="Append report lifecycle events to this JSONL file")
+    args = parser.parse_args(argv)
     
     project_dir = Path(__file__).resolve().parent.parent
     db_abs = project_dir / args.db_path
     vault_abs = project_dir / args.vault_dir
-    
+    event_path = project_dir / args.event_log if args.event_log else None
+    journal = ReportRunJournal.from_path(event_path, "daily", warn=lambda message: print(f"[WARN] {message}"))
+    journal.started()
     try:
         generate_morning_report(str(db_abs), str(vault_abs), lookback_hours=args.lookback_hours)
     except Exception as e:
         print(f"❌ Error generating report: {e}")
-        sys.exit(1)
+        journal.finished(success=False, stage="report", error=e)
+        return 1
+    journal.finished(success=True, stage="delivery")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
