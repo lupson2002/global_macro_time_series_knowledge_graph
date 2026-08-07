@@ -104,6 +104,34 @@ class ReconciliationRepairTests(unittest.TestCase):
         markdown.export_markdown.assert_called_once_with(schemas["abcdefghijk"])
         vector_upsert.assert_called_once_with(schemas["lmnopqrstuv"])
 
+    def test_repair_batches_all_missing_vectors_in_plan_order(self):
+        plan = ReconciliationPlan(
+            missing_markdown=(),
+            missing_vectors=("abcdefghijk", "lmnopqrstuv"),
+            orphan_markdown=(),
+            orphan_vectors=(),
+        )
+        schemas = {
+            video_id: macro_view(video_id=video_id)
+            for video_id in plan.missing_vectors
+        }
+        batch_upsert = Mock(return_value=True)
+        individual_upsert = Mock(side_effect=AssertionError("batch path expected"))
+
+        result = repair_missing(
+            plan,
+            schemas,
+            markdown_exporter=Mock(),
+            vector_upsert=individual_upsert,
+            vector_batch_upsert=batch_upsert,
+        )
+
+        self.assertEqual(result.vectors_repaired, plan.missing_vectors)
+        batch_upsert.assert_called_once_with(
+            [schemas[video_id] for video_id in plan.missing_vectors]
+        )
+        individual_upsert.assert_not_called()
+
     def test_backup_contains_consistent_sqlite_and_lancedb_copy(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -139,16 +167,15 @@ class LanceDbPathTests(unittest.TestCase):
             db_dir.mkdir()
             table = Mock()
             table.count_rows.return_value = 1
-            table.to_lance.return_value.scanner.return_value.to_table.return_value = (
-                pa.table({"video_id": ["abcdefghijk"]})
+            table.search.return_value.select.return_value.to_arrow.return_value = pa.table(
+                {"video_id": ["abcdefghijk"]}
             )
             with patch.object(lancedb_store, "_get_table", return_value=table) as get_table:
                 ids = lancedb_store.list_video_ids(db_dir)
             self.assertEqual(ids, frozenset({"abcdefghijk"}))
             get_table.assert_called_once_with(create=False, db_dir=db_dir)
-            table.to_lance.return_value.scanner.assert_called_once_with(
-                columns=["video_id"]
-            )
+            table.search.assert_called_once_with()
+            table.search.return_value.select.assert_called_once_with(["video_id"])
 
 
 class ReconciliationCliTests(unittest.TestCase):

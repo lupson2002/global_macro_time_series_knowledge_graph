@@ -23,6 +23,7 @@ from src.reconciliation import (  # noqa: E402
     plan_as_dict,
     repair_missing,
     upsert_schema_vector,
+    upsert_schema_vectors,
 )
 
 
@@ -162,6 +163,9 @@ def main(argv: list[str] | None = None) -> int:
             schemas,
             markdown_exporter=ObsidianMDExporter(str(vault_path)),
             vector_upsert=lambda schema: upsert_schema_vector(schema, lancedb_dir),
+            vector_batch_upsert=lambda schemas: upsert_schema_vectors(
+                schemas, lancedb_dir
+            ),
         )
         payload["backup"] = str(backup_path)
         payload["repair"] = {

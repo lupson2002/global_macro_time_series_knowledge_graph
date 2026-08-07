@@ -145,6 +145,27 @@ class EmbeddingAndVectorBoundaryTests(unittest.TestCase):
             self.assertEqual(lancedb_store.search_hybrid("query"), [])
         embed.assert_not_called()
 
+    def test_batch_upsert_embeds_and_merges_once(self):
+        table = Mock()
+        merge = table.merge_insert.return_value
+        merge.when_matched_update_all.return_value = merge
+        merge.when_not_matched_insert_all.return_value = merge
+        vectors = np.ones((2, lancedb_store.VECTOR_DIM), dtype=np.float32)
+        documents = [
+            {"video_id": "abcdefghijk", "text": "inflation"},
+            {"video_id": "lmnopqrstuv", "text": "bonds"},
+        ]
+
+        with patch.object(lancedb_store, "_embed_batch", return_value=vectors) as embed, patch.object(
+            lancedb_store, "_get_table", return_value=table
+        ):
+            self.assertTrue(lancedb_store.upsert_documents(documents))
+
+        embed.assert_called_once_with(["inflation", "bonds"])
+        table.merge_insert.assert_called_once_with("video_id")
+        rows = merge.execute.call_args.args[0]
+        self.assertEqual([row["video_id"] for row in rows], ["abcdefghijk", "lmnopqrstuv"])
+
     def test_semantic_search_wrapper_preserves_result_order(self):
         rows = [{"video_id": "b"}, {"video_id": "a"}]
         views = [{"video_id": "b"}, {"video_id": "a"}]

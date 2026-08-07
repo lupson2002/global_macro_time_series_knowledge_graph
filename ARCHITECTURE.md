@@ -93,7 +93,7 @@ TurboVec server와 `.tvim` 인덱스는 현재 아키텍처에 존재하지 않�
 
 ### Reconciliation
 
-`src.reconciliation`은 SQLite report ID를 기준 집합으로 삼아 Markdown/LanceDB의 누락과 고아 ID를 계산한다. `scripts/reconcile_storage.py`는 기본 read-only이며 `--apply --yes`일 때만 누락 projection을 생성한다. LanceDB ID 감사는 별도 프로세스와 시간 제한으로 격리되며 timeout 시 unavailable로 표시하고 전체 적용을 거부한다. `--markdown-only`는 vector 저장소를 열지 않는다. 적용 전 SQLite online backup API와 LanceDB 디렉터리 복사본을 `backups/reconciliation/<UTC timestamp>/`에 만들며, 고아 항목은 자동 삭제하지 않는다.
+`src.reconciliation`은 SQLite report ID를 기준 집합으로 삼아 Markdown/LanceDB의 누락과 고아 ID를 계산한다. `scripts/reconcile_storage.py`는 기본 read-only이며 `--apply --yes`일 때만 누락 projection을 생성한다. LanceDB ID 감사는 별도 프로세스와 시간 제한으로 격리되며 timeout 시 unavailable로 표시하고 전체 적용을 거부한다. `--markdown-only`는 vector 저장소를 열지 않는다. 벡터 복구는 전체 누락분을 한 번에 임베딩하고 단일 merge transaction으로 upsert한다. 적용 전 SQLite online backup API와 LanceDB 디렉터리 복사본을 `backups/reconciliation/<UTC timestamp>/`에 만들며, 고아 항목은 자동 삭제하지 않는다.
 
 ## 5. Derived pipelines
 

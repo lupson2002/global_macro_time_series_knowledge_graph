@@ -168,7 +168,7 @@ LLM 호출은 공통 provider 실행 계층이 재시도와 fallback을 한 번�
 
 ### 저장소 reconciliation
 
-`scripts/reconcile_storage.py`는 SQLite `reports`를 원본 집합으로 보고 Obsidian Markdown과 LanceDB video ID를 비교합니다. 기본 실행은 읽기 전용이며 누락 항목과 DB에 없는 고아 항목을 구분합니다. LanceDB native read가 지정 시간 안에 끝나지 않으면 감사를 중단하지 않고 vector 상태를 unavailable로 표시하며 적용을 거부합니다. `--markdown-only`로 Markdown 범위만 독립적으로 감사·복구할 수 있습니다. `--apply --yes`는 누락 항목만 생성하고 고아 항목은 삭제하지 않습니다. 적용 전 SQLite snapshot과 LanceDB 디렉터리를 `backups/reconciliation/`에 자동 보관합니다. 복구 실행 중에는 수집 파이프라인을 중지해야 합니다.
+`scripts/reconcile_storage.py`는 SQLite `reports`를 원본 집합으로 보고 Obsidian Markdown과 LanceDB video ID를 비교합니다. 기본 실행은 읽기 전용이며 누락 항목과 DB에 없는 고아 항목을 구분합니다. LanceDB native read가 지정 시간 안에 끝나지 않으면 감사를 중단하지 않고 vector 상태를 unavailable로 표시하며 적용을 거부합니다. `--markdown-only`로 Markdown 범위만 독립적으로 감사·복구할 수 있습니다. `--apply --yes`는 누락 항목만 생성하고 고아 항목은 삭제하지 않습니다. 누락 벡터는 한 번의 배치 임베딩과 merge transaction으로 복구합니다. 적용 전 SQLite snapshot과 LanceDB 디렉터리를 `backups/reconciliation/`에 자동 보관합니다. 복구 실행 중에는 수집 파이프라인을 중지해야 합니다.
 
 종료 코드는 `0=일치/복구 완료`, `1=감사·복구 미완료`, `2=drift 발견`, `64=--apply 확인 부족`입니다. 일반 영상 파이프라인도 영상 또는 backfill 실패가 하나 이상이면 이제 `1`을 반환합니다.
 

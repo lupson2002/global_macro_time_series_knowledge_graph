@@ -159,6 +159,45 @@ def upsert_document(
         return False
 
 
+def upsert_documents(documents: list[dict], db_dir: Path | None = None) -> bool:
+    """Batch upsert documents in one embedding pass and one Lance transaction."""
+    valid = [document for document in documents if document.get("video_id")]
+    if not valid:
+        return True
+    try:
+        vectors = _embed_batch([str(document.get("text") or "") for document in valid])
+        rows = []
+        for document, vector in zip(valid, vectors):
+            rows.append(
+                {
+                    "video_id": document["video_id"],
+                    "text": str(document.get("text") or ""),
+                    "vector": vector,
+                    "broadcast_date": str(document.get("broadcast_date") or ""),
+                    "source_channel": str(document.get("source_channel") or ""),
+                    "macro_theme": list(document.get("macro_theme") or []),
+                    "asset_class": list(document.get("asset_class") or []),
+                    "ticker": list(document.get("ticker") or []),
+                    "expectation_gap": str(document.get("expectation_gap") or ""),
+                    "causal_chain_json": json.dumps(
+                        document.get("causal_chain") or [], ensure_ascii=False
+                    ),
+                    "tracking_indicators_json": json.dumps(
+                        document.get("tracking_indicators") or [], ensure_ascii=False
+                    ),
+                    "tactical_stance_json": json.dumps(
+                        document.get("tactical_stance") or [], ensure_ascii=False
+                    ),
+                }
+            )
+        table = _get_table(db_dir=db_dir)
+        table.merge_insert("video_id").when_matched_update_all().when_not_matched_insert_all().execute(rows)
+        return True
+    except Exception as exc:  # noqa: BLE001
+        print(f"[WARN] LanceDB batch upsert 실패 ({len(valid)}건): {exc}")
+        return False
+
+
 # ---------------------------------------------------------------------------
 # 하이브리드 검색 (SQL 필터 + 시맨틱 벡터)
 # ---------------------------------------------------------------------------
@@ -258,9 +297,10 @@ def list_video_ids(db_dir: Path | None = None) -> frozenset[str]:
     table = _get_table(create=False, db_dir=target)
     if table is None or table.count_rows() == 0:
         return frozenset()
-    # Project only the identifier column; to_arrow() materializes every high-dimensional
-    # vector and can turn a lightweight audit into a long, memory-heavy full-table read.
-    id_table = table.to_lance().scanner(columns=["video_id"]).to_table()
+    # Project only the identifier column. Direct to_arrow() materializes every vector;
+    # to_lance() requires the optional pylance package, while search/select stays within
+    # the installed LanceDB API and avoids loading high-dimensional vectors.
+    id_table = table.search().select(["video_id"]).to_arrow()
     return frozenset(str(value) for value in id_table["video_id"].to_pylist())
 
 
