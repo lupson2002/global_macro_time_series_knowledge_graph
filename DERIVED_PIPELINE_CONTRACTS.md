@@ -19,7 +19,9 @@ characterization test로 고정한 안전 기준선이다. 이 단계에서는 �
    고정할 수 있어 변경 위험이 가장 낮다. **13단계 완료:** `src/json_utils.py`의
    `parse_json_list()`로 통합했고, native list 허용 여부를 명시적 옵션으로 보존했다.
 2. SMTP 전송과 plain-text fallback을 delivery adapter로 모은다. Daily, CIO, Insight의
-   수신자·제목·첨부·fallback 계약을 각각 고정한 뒤 이동한다.
+   수신자·제목·첨부·fallback 계약을 각각 고정한 뒤 이동한다. **14단계 완료:**
+   `src/email_delivery.py`가 MIME/SMTP transport를 담당하고 파이프라인별 skip·경고·fallback
+   정책은 기존 진입점에 유지했다.
 3. frontmatter, Markdown 표, HTML envelope 등 렌더링 경계를 통합한다. 파이프라인별 본문
    형식은 그대로 두고 공통 escape/조립 기능만 이동한다.
 4. 기존 cloud client 위에 파생 리포트용 요청/결과 metadata 경계를 둔다. 모델, prompt,

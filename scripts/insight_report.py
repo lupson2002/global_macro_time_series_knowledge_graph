@@ -23,6 +23,7 @@ from src.insights.knowledge_graph import (
     render_plotly_dashboard,
     summarize_network,
 )
+from src.email_delivery import EmailAttachment, send_multipart_email
 
 
 def build_report(no_llm: bool = False, expiry: str = "timebox") -> tuple[str, dict]:
@@ -162,10 +163,6 @@ def build_report(no_llm: bool = False, expiry: str = "timebox") -> tuple[str, di
 
 def send_email_with_visuals(md: str, summary: dict, subject: str) -> None:
     """마크다운 → HTML + 대시보드 PNG inline + pyvis/plotly HTML 첨부 발송."""
-    import smtplib
-    from email.mime.multipart import MIMEMultipart
-    from email.mime.text import MIMEText
-    from email.mime.application import MIMEApplication
     from src.config import settings
     from src.report_generator import _md_to_html_email, send_email_report, _resolve_recipients  # noqa: F401 (fallback)
 
@@ -179,33 +176,20 @@ def send_email_with_visuals(md: str, summary: dict, subject: str) -> None:
         return
 
     html_body = _md_to_html_email(md)
-    msg = MIMEMultipart("mixed")
-    msg["Subject"] = subject
-    msg["From"] = user
-    msg["To"] = ", ".join(recipients)
-
-    # alternative: plain + html
-    alt = MIMEMultipart("alternative")
-    alt.attach(MIMEText(md, "plain", "utf-8"))
-    alt.attach(MIMEText(html_body, "html", "utf-8"))
-    msg.attach(alt)
-
-    # 본문 PNG inline 제거 — 본문은 표(마크다운)만. 시각화는 첨부.
-    # 첨부: pyvis 2D + plotly 3D 그래프 + plotly 대시보드 HTML (브라우저에서 인터랙티브)
-    n_att = 0
-    for key, fname in (("pyvis_path", "knowledge_graph.html"), ("three_d_path", "knowledge_graph_3d.html"), ("dashboard_path", "insight_dashboard.html")):
-        p = summary.get(key)
-        if p and Path(p).is_file():
-            with open(p, "rb") as f:
-                att = MIMEApplication(f.read(), _subtype="html")
-            att.add_header("Content-Disposition", "attachment", filename=fname)
-            msg.attach(att)
-            n_att += 1
+    attachments = [
+        EmailAttachment(Path(summary[key]), fname)
+        for key, fname in (("pyvis_path", "knowledge_graph.html"),
+                           ("three_d_path", "knowledge_graph_3d.html"),
+                           ("dashboard_path", "insight_dashboard.html"))
+        if summary.get(key)
+    ]
 
     try:
-        with smtplib.SMTP_SSL(host, port, timeout=60) as s:
-            s.login(user, pwd)
-            s.sendmail(user, recipients, msg.as_string())
+        n_att = send_multipart_email(
+            subject=subject, body_text=md, body_html=html_body,
+            user=user, password=pwd, recipients=recipients, host=host, port=port,
+            attachments=attachments, mixed_root=True, timeout=60,
+        )
         print(f"✓ 메일 발송 완료 (본문 표 + HTML 첨부 {n_att}) → {', '.join(recipients)}")
     except Exception as e:
         print(f"⚠️ 시각화 메일 발송 실패({e}) — plain 텍스트 폴백 발송")

@@ -20,6 +20,7 @@ The suite uses temporary directories and mocks. It does not require network acce
 - `test_pipeline_contracts.py`: macro relevance rules, skipped-video idempotency, channel tier filtering.
 - `test_derived_pipelines.py`: Daily sentiment, CIO evidence/table rendering, Telegram dispatch/chunking, Insight headline/node contracts.
 - `test_json_utils.py`: malformed/non-array JSON fallback and explicit native-list compatibility mode.
+- `test_email_delivery.py`: plain/HTML MIME shape, attachment filtering, SMTP options, and pipeline-specific fallback policies.
 - `test_pipeline_service.py`: full-transcript handoff, typed stage failures, IP-block abort, delay policy and retryable partial storage.
 - `test_main_cli.py`: CLI defaults, target ordering/deduplication, tier selection, backfill ID handling, delay sequencing, and exit status.
 - `test_domain.py`: read-only schema sections, malformed-section isolation, list copy safety, and canonical vector projection.

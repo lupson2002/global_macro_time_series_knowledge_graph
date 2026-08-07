@@ -16,6 +16,7 @@ import datetime
 from pathlib import Path
 import logging
 from src.config import settings
+from src.email_delivery import EmailAttachment, send_multipart_email
 from src.json_utils import parse_json_list as _parse_json_list
 
 logger = logging.getLogger(__name__)
@@ -457,10 +458,6 @@ tags: [macro_strategy, global_macro, asset_allocation]
 # ---------------------------------------------------------------------------
 def _send_cio_email_with_visuals(subject: str, body_md: str, viz_paths: dict) -> None:
     """CIO 리포트 메일 — 본문(마크다운→HTML) + 시각화 HTML 첨부. 실패 시 plain 폴백."""
-    import smtplib
-    from email.mime.multipart import MIMEMultipart
-    from email.mime.text import MIMEText
-    from email.mime.application import MIMEApplication
     from src.report_generator import _md_to_html_email, _resolve_recipients
 
     user = settings.email.user
@@ -469,33 +466,23 @@ def _send_cio_email_with_visuals(subject: str, body_md: str, viz_paths: dict) ->
         print("[INFO] Gmail 설정 없음 — 메일 스킵")
         return
     recipients = _resolve_recipients()
-    pwd_clean = pwd.replace(" ", "")
     host = settings.email.smtp_host
     port = settings.email.smtp_port
 
     html_body = _md_to_html_email(body_md)
-    msg = MIMEMultipart("mixed")
-    msg["Subject"] = subject
-    msg["From"] = user
-    msg["To"] = ", ".join(recipients)
-    alt = MIMEMultipart("alternative")
-    alt.attach(MIMEText(body_md, "plain", "utf-8"))
-    alt.attach(MIMEText(html_body, "html", "utf-8"))
-    msg.attach(alt)
-
-    # 시각화 HTML 첨부 (브라우저에서 인터랙티브)
-    for key, fname in [("pie", "cio_allocation_pie.html"), ("bar", "cio_sentiment_bar.html"), ("conflicts", "cio_conflicts.html")]:
-        p = viz_paths.get(key)
-        if p and Path(p).is_file():
-            with open(p, "rb") as f:
-                att = MIMEApplication(f.read(), _subtype="html")
-            att.add_header("Content-Disposition", "attachment", filename=fname)
-            msg.attach(att)
+    attachments = [
+        EmailAttachment(Path(viz_paths[key]), fname)
+        for key, fname in [("pie", "cio_allocation_pie.html"), ("bar", "cio_sentiment_bar.html"),
+                           ("conflicts", "cio_conflicts.html")]
+        if viz_paths.get(key)
+    ]
 
     try:
-        with smtplib.SMTP_SSL(host, port, timeout=60) as s:
-            s.login(user, pwd_clean)
-            s.sendmail(user, recipients, msg.as_string())
+        send_multipart_email(
+            subject=subject, body_text=body_md, body_html=html_body,
+            user=user, password=pwd, recipients=recipients, host=host, port=port,
+            attachments=attachments, mixed_root=True, timeout=60, strip_password_spaces=True,
+        )
         n_att = sum(1 for v in viz_paths.values() if v)
         print(f"✓ CIO 메일 발송 (본문 HTML + 시각화 첨부 {n_att}) → {', '.join(recipients)}")
     except Exception as e:

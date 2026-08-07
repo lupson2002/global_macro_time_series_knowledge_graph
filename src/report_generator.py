@@ -13,13 +13,11 @@ import json
 import sqlite3
 import datetime
 import time
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 from pathlib import Path
 import markdown as _md
 import re as _re
 from src.config import settings
+from src.email_delivery import send_multipart_email
 from src.json_utils import parse_json_list
 
 # src.llm_router 등 src.* 패키지 import 를 위해 프로젝트 루트를 sys.path 에 추가
@@ -392,23 +390,20 @@ def send_email_report(subject: str, body_content: str):
 
     recipients = _resolve_recipients()
 
-    gmail_password_clean = gmail_password.replace(" ", "")
-
     try:
         print("📨 Attempting to send report via email...")
         html_body = _md_to_html_email(body_content)
-        msg = MIMEMultipart("alternative")
-        msg['From'] = gmail_user
-        msg['To'] = ", ".join(recipients)
-        msg['Subject'] = subject
-
-        # plain(폴백) + HTML 양쪽 첨부 — 클라이언트가 HTML 미지원 시 plain 표시
-        msg.attach(MIMEText(body_content, 'plain', 'utf-8'))
-        msg.attach(MIMEText(html_body, 'html', 'utf-8'))
-
-        with smtplib.SMTP_SSL(settings.email.smtp_host, settings.email.smtp_port) as server:
-            server.login(gmail_user, gmail_password_clean)
-            server.sendmail(gmail_user, recipients, msg.as_string())
+        send_multipart_email(
+            subject=subject,
+            body_text=body_content,
+            body_html=html_body,
+            user=gmail_user,
+            password=gmail_password,
+            recipients=recipients,
+            host=settings.email.smtp_host,
+            port=settings.email.smtp_port,
+            strip_password_spaces=True,
+        )
 
         print(f"✓ Email successfully sent! ({', '.join(recipients)})")
     except Exception as e:

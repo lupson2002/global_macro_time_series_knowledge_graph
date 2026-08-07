@@ -133,3 +133,18 @@ delivery adapter, 렌더링 envelope, 파생 LLM 경계, 얇은 진입점 순으
 
 다음 2차 구현은 Daily/CIO/Insight의 메일 발송 계약을 characterization test로 먼저
 고정한 뒤 공통 delivery adapter로 이동한다.
+
+## 다섯 번째 구현 파동 2차 결과
+
+- MIME plain/HTML 조립, HTML 파일 첨부, SMTP login/send를
+  `src/email_delivery.py::send_multipart_email`로 통합했다.
+- Daily의 timeout 미지정·비밀번호 공백 제거·전송 실패 경고 계약을 유지했다.
+- CIO의 mixed 첨부·60초 timeout·비밀번호 공백 제거·plain fallback 계약을 유지했다.
+- Insight의 mixed 첨부·실재 파일만 집계·60초 timeout·plain fallback 계약을 유지했다.
+- 설정 부족 시 기존 skip 문구와 공개 `send_email_report`, `_send_cio_email_with_visuals`,
+  `send_email_with_visuals` 진입점을 유지했다.
+- 실제 SMTP 연결 없는 테스트로 MIME 구조, 로그인 인자, 수신자, 첨부 파일명과 fallback
+  호출 횟수를 검증한다.
+
+다음 3차 구현은 frontmatter, Markdown 표 escape, HTML envelope의 공통 렌더링 후보를
+분류하고 출력 snapshot을 보강한 뒤 순수 rendering helper만 이동한다.
