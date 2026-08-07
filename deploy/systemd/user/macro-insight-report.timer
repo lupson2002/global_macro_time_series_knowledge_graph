@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Global Macro insight report Fridays at 05:00 KST
+
+[Timer]
+OnCalendar=Fri *-*-* 05:00:00
+Persistent=true
+AccuracySec=1min
+Unit=macro-insight-report.service
+
+[Install]
+WantedBy=timers.target

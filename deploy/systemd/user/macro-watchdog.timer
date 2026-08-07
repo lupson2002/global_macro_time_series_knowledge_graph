@@ -1,0 +1,11 @@
+[Unit]
+Description=Monitor Global Macro automation every 15 minutes
+
+[Timer]
+OnCalendar=*-*-* *:00/15:00
+Persistent=true
+AccuracySec=1min
+Unit=macro-watchdog.service
+
+[Install]
+WantedBy=timers.target

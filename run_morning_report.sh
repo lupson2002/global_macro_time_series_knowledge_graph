@@ -43,3 +43,4 @@ fi
 
 echo "=== MORNING REPORT CRON END ===" >> "${LOG_FILE}"
 echo "" >> "${LOG_FILE}"
+exit "${EXIT_CODE}"

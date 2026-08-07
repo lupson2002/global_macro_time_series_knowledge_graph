@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Global Macro ingestion every six hours
+
+[Timer]
+OnCalendar=*-*-* 00/6:00:00
+Persistent=true
+AccuracySec=1min
+Unit=macro-pipeline.service
+
+[Install]
+WantedBy=timers.target

@@ -30,6 +30,8 @@ The suite uses temporary directories and mocks. It does not require network acce
 - `test_run_events.py`: stable run/video/report JSON schema, UTF-8 JSONL append, disabled no-op, and fail-open sink policy.
 - `test_report_cli_events.py`: Daily/CIO/Insight/Narrative opt-in lifecycle order, shared run ID, failure stage, and preserved CIO exception policy.
 - `test_event_summary.py`: malformed-line isolation, newest-first run aggregation, read-only CLI exit codes, and opt-in wrapper argument wiring.
+- `test_automation_health.py`: latest-run recovery, stale execution and failed-subject watchdog decisions.
+- `test_systemd_units.py`: persistent schedules, wrapper mapping, unbuffered services and watchdog coverage.
 - `test_domain.py`: read-only schema sections, malformed-section isolation, list copy safety, and canonical vector projection.
 - `test_projections.py`: canonical LanceDB projection and explicit false-upsert failure.
 - `test_reconciliation.py`: drift planning, read-only audit, explicit apply guard, backup integrity, missing-only repair, and batched vector repair ordering.

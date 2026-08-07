@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Global Macro CIO report Mondays at 08:00 KST
+
+[Timer]
+OnCalendar=Mon *-*-* 08:00:00
+Persistent=true
+AccuracySec=1min
+Unit=macro-cio-report.service
+
+[Install]
+WantedBy=timers.target

@@ -60,3 +60,4 @@ fi
 
 echo "=== WEEKLY ORCHESTRATOR CRON END ===" >> "${LOG_FILE}"
 echo "" >> "${LOG_FILE}"
+exit "${EXIT_CODE}"

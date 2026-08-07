@@ -1,0 +1,10 @@
+[Unit]
+Description=Verify Global Macro schedule and journal health
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/mikey/global_macro_time_series_knowledge_graph
+Environment=PYTHONUNBUFFERED=1
+Environment=PIPELINE_EVENT_LOG=/home/mikey/global_macro_time_series_knowledge_graph/logs/pipeline-events.jsonl
+ExecStart=/usr/bin/systemctl --user is-active macro-pipeline.timer macro-daily-report.timer macro-auto-blog.timer macro-insight-report.timer macro-cio-report.timer macro-narrative-report.timer
+ExecStart=/home/mikey/global_macro_time_series_knowledge_graph/.venv/bin/python /home/mikey/global_macro_time_series_knowledge_graph/scripts/check_automation_health.py

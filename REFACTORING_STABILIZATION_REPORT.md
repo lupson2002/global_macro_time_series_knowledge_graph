@@ -83,3 +83,15 @@ Stage 19의 report lifecycle 계약을 Daily, CIO, Insight, Narrative 실제 진
 하는 실행 요약 CLI를 제공했다. 환경변수가 비어 있으면 기존 자동화 명령은 journal 인자를
 추가하지 않는다. 요약기는 실행별 상태와 집계만 표시하며 파일 부재·손상 줄을 명시적 종료
 코드로 구분하고 유효한 나머지 기록은 계속 처리한다.
+
+## Operations completion gate
+
+프로젝트의 cron 5개 작업과 system Narrative timer를 6개 user-systemd work timer로
+통합하고 15분 watchdog을 추가했다. 모든 work timer는 `Persistent=true`이고 Linux user
+lingering이 활성화되어 있다. Windows 로그인 시 Ubuntu WSL을 시작하는
+`GlobalMacro-WSL-Autostart` 작업도 등록·시험 실행했으며 결과 코드는 0이었다.
+
+기존 래퍼가 실제 Python 종료 코드를 마지막 로그 출력으로 덮어쓰던 경계를 수정해 systemd가
+실패를 관측할 수 있게 했다. `.env`를 shell로 실행하던 두 래퍼의 source도 제거했으며 Python
+설정 로더가 기존 방식대로 환경 파일을 읽는다. 기존 프로젝트 스케줄은 비활성화하여 중복을
+제거했고 다른 프로젝트의 crontab 항목은 보존했다.

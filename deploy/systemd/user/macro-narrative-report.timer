@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Global Macro narrative report Wednesdays and Sundays at 06:00 KST
+
+[Timer]
+OnCalendar=Wed,Sun *-*-* 06:00:00
+Persistent=true
+AccuracySec=1min
+Unit=macro-narrative-report.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,8 @@
+[Unit]
+Description=Global Macro automatic blog workflow
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/mikey/global_macro_time_series_knowledge_graph
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/bin/bash /home/mikey/global_macro_time_series_knowledge_graph/run_auto_blog.sh

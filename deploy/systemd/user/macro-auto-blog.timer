@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Global Macro automatic blog workflow at 08:30 KST
+
+[Timer]
+OnCalendar=*-*-* 08:30:00
+Persistent=true
+AccuracySec=1min
+Unit=macro-auto-blog.service
+
+[Install]
+WantedBy=timers.target

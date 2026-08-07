@@ -89,3 +89,4 @@ class WrapperEventLogContractTests(unittest.TestCase):
                 self.assertIn('if [[ -n "${PIPELINE_EVENT_LOG:-}" ]]', text)
                 self.assertIn('EVENT_LOG_ARGS=(--event-log "${PIPELINE_EVENT_LOG}")', text)
                 self.assertIn('"${EVENT_LOG_ARGS[@]}"', text)
+                self.assertIn('exit "${EXIT_CODE}"', text)

@@ -27,13 +27,6 @@ cd "${PROJECT_DIR}" || {
     exit 1
 }
 
-# .env 로드 (GMAIL_* / NIM_*)
-if [ -f ".env" ]; then
-    set -a
-    . ./.env
-    set +a
-fi
-
 # Verify nvidia-api-proxy is alive (RAG/LLM 내러티브 backend) — start if down.
 if ! curl -sf --max-time 5 http://localhost:8000/health >/dev/null 2>&1; then
     echo "⚠️ nvidia-api-proxy down — restarting via pm2..." >> "${LOG_FILE}"
@@ -71,3 +64,4 @@ fi
 
 echo "=== MARKET NARRATIVE REPORT CRON END ===" >> "${LOG_FILE}"
 echo "" >> "${LOG_FILE}"
+exit "${EXIT_CODE}"
