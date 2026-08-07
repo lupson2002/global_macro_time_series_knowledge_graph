@@ -13,6 +13,7 @@ The suite uses temporary directories and mocks. It does not require network acce
 
 ## Contract coverage
 
+- `test_config.py`: defaults, legacy environment names, override precedence and startup validation.
 - `test_extraction.py`: JSON sanitization, backlink normalization, metadata overrides, soft schema validation, full-transcript retry.
 - `test_local_llm_client.py`: full single-shot delivery for a transcript larger than the former truncation threshold.
 - `test_pipeline_contracts.py`: macro relevance rules, skipped-video idempotency, channel tier filtering.

@@ -18,7 +18,6 @@ Usage (코어 엔진 단독):
 """
 from __future__ import annotations
 
-import os
 import sqlite3
 import sys
 from datetime import datetime
@@ -29,9 +28,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from dotenv import load_dotenv  # noqa: E402
-
-load_dotenv()
+from src.config import settings  # noqa: E402
 
 from src.insights.cross_matrix import asset_consensus_matrix  # noqa: E402
 from src.insights.rag_insights import (  # noqa: E402
@@ -43,9 +40,9 @@ from src.insights.timebox import valid_time_box_values  # noqa: E402
 
 DB_PATH = PROJECT_ROOT / "data" / "macro_knowledge.db"
 
-NIM_BASE_URL = os.environ.get("NIM_BASE_URL", "http://localhost:8000")
-NIM_API_KEY = os.environ.get("NIM_API_KEY", "proxy-rotates-keys")
-NARRATIVE_MAX_TOKENS = int(os.environ.get("NARRATIVE_MAX_TOKENS", "8192"))
+NIM_BASE_URL = settings.llm.nim_base_url
+NIM_API_KEY = settings.llm.nim_api_key
+NARRATIVE_MAX_TOKENS = settings.llm.narrative_max_tokens
 
 # ── RAG 전용 6대 내러티브 쿼리 (4대 진단 + 긍정/부정 시나리오) ──
 NARRATIVE_QUERIES: dict[str, str] = {

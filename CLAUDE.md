@@ -7,6 +7,7 @@ Tests: stdlib unittest tests in `tests/`; run `.venv/bin/python -m unittest disc
 Compile: `.venv/bin/python -m compileall -q main.py src scripts publish_all_blogs.py`
 
 ## Runtime
+- `src/config.py` is the single validated environment/settings source; preserve existing env names.
 - Main generation path: `cloud_client` uses Ollama Cloud up to 3 attempts, then NIM fallback.
 - Translation/light generation: `Llama70BRouter` rotates configured Cerebras/Groq providers, then NIM.
 - NIM defaults: Tier 1/2/3/Insight use `deepseek-ai/deepseek-v4-flash`; env may override.

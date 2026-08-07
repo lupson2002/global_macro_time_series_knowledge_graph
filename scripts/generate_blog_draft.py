@@ -21,26 +21,22 @@ from __future__ import annotations
 import argparse
 import datetime
 import json
-import os
 import sqlite3
 import sys
 from pathlib import Path
 
-from dotenv import load_dotenv
-
-load_dotenv()
-
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))  # src.llm_router 등 src.* import 용
+from src.config import settings
 DB_PATH = PROJECT_DIR / "data" / "macro_knowledge.db"
 DAILY_DIR = PROJECT_DIR / "obsidian_vault" / "Daily_Reports"
 DRAFT_PATH = PROJECT_DIR / "tistory_draft.md"
 
-NIM_BASE_URL = os.environ.get("NIM_BASE_URL", "http://localhost:8000")
-NIM_API_KEY = os.environ.get("NIM_API_KEY", "proxy-rotates-keys")
+NIM_BASE_URL = settings.llm.nim_base_url
+NIM_API_KEY = settings.llm.nim_api_key
 # 👑 [2026-08-06 L3] 미사용 BLOG_MODEL(정의만, EOL qwen3-next 기본값) 제거.
-BLOG_TIMEOUT = float(os.environ.get("BLOG_TIMEOUT", "180.0"))
+BLOG_TIMEOUT = settings.llm.blog_timeout
 
 
 def _parse_json_list(raw):

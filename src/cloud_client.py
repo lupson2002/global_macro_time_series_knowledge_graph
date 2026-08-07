@@ -16,26 +16,24 @@ NVIDIA NIM(504 장애)에서 Ollama Cloud(deepseek-v4-flash:0731-cloud)로 전�
 """
 from __future__ import annotations
 
-import os
 import time
 
-from dotenv import load_dotenv
 from openai import OpenAI
 from ollama import Client as OllamaClient
 
-load_dotenv()
+from src.config import settings
 
 # ── Ollama Cloud (메인, 공식 ollama Client) ──
-OLLAMA_PRO_BASE_URL = os.environ.get("OLLAMA_PRO_BASE_URL", "https://ollama.com")
-OLLAMA_PRO_API_KEY = os.environ.get("OLLAMA_PRO_API_KEY", "")
-OLLAMA_PRO_MODEL = os.environ.get("OLLAMA_PRO_MODEL", "deepseek-v4-flash:0731-cloud")
+OLLAMA_PRO_BASE_URL = settings.llm.ollama_base_url
+OLLAMA_PRO_API_KEY = settings.llm.ollama_api_key
+OLLAMA_PRO_MODEL = settings.llm.ollama_model
 
 # ── NIM 폴백 (보조) ──
-NIM_BASE_URL = os.environ.get("NIM_BASE_URL", "http://localhost:8000")
-NIM_API_KEY = os.environ.get("NIM_API_KEY", "proxy-rotates-keys")
-NIM_MODEL = os.environ.get("TIER2_MODEL", "deepseek-ai/deepseek-v4-flash")
+NIM_BASE_URL = settings.llm.nim_base_url
+NIM_API_KEY = settings.llm.nim_api_key
+NIM_MODEL = settings.llm.tier2_model
 
-_TIMEOUT = 300.0
+_TIMEOUT = settings.llm.timeout
 
 # 👑 [2026-08-06 M5] 클라이언트 lazy 싱글턴 — 호출마다 OllamaClient/OpenAI 를
 # 재생성하면 연결이 재수립되어 6채널×재시도면 수십 개 연결이 누적됨.
@@ -100,7 +98,7 @@ def chat_completion(
     # 👑 [2026-08-07] 빈 응답/일시 오류 시 즉시 NIM 폴백하지 않고 3회 재시도.
     #    합성 프롬프트(24h 전체 데이터)에서 Ollama가 간헐적 빈 응답을 반환하며,
     #    그때 NIM(504 장애)으로 바로 넘어가 병목이 됐던 사례 확인 → 재시도로 방어.
-    for _attempt in range(1, 4):
+    for _attempt in range(1, 4) if OLLAMA_PRO_API_KEY else ():
         try:
             client = _get_ollama_client()
             # 👑 [2026-08-07] 근본원인: deepseek-v4-flash:0731-cloud 는 reasoning 모델이라
@@ -120,7 +118,10 @@ def chat_completion(
             status = getattr(e, "status_code", "")
             print(f"[CloudClient] Ollama 실패 (status={status} {type(e).__name__}: {err_detail}) — 시도 {_attempt}/3, 1.5s 후 재시도")
         time.sleep(1.5)
-    print("[CloudClient] Ollama 3회 빈 응답/실패 — NIM 폴백")
+    if OLLAMA_PRO_API_KEY:
+        print("[CloudClient] Ollama 3회 빈 응답/실패 — NIM 폴백")
+    else:
+        print("[CloudClient] OLLAMA_PRO_API_KEY 미설정 — NIM 폴백")
 
     # 2) NIM 폴백 (OpenAI 호환)
     try:

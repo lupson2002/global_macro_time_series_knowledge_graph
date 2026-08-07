@@ -8,7 +8,6 @@ daily consensus report with Obsidian backlinks, and exports it to the Daily_Repo
 within the Obsidian Vault. TIER2_MODEL env 오버라이드.
 """
 
-import os
 import sys
 import json
 import sqlite3
@@ -18,10 +17,10 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from pathlib import Path
-from dotenv import load_dotenv
 from openai import OpenAI
 import markdown as _md
 import re as _re
+from src.config import settings
 
 # src.llm_router 등 src.* 패키지 import 를 위해 프로젝트 루트를 sys.path 에 추가
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -175,13 +174,11 @@ def _tr(tr_map: dict, key: str, orig: str) -> str:
     return tr_map.get(key, orig)
 
 # Load dotenv
-load_dotenv()
-
 # NIM fallback 설정. 일반 합성은 cloud_client의 Ollama Cloud 우선 경로를 사용한다.
-NIM_BASE_URL = os.environ.get("NIM_BASE_URL", "http://localhost:8000")
-NIM_API_KEY = os.environ.get("NIM_API_KEY", "proxy-rotates-keys")  # proxy 가 6-key rotation
-TIER2_MODEL = os.environ.get("TIER2_MODEL", "deepseek-ai/deepseek-v4-flash")  # qwen3-next-80b-a3b 2026-07-27 EOL → deepseek-v4-flash
-TIER2_TIMEOUT = float(os.environ.get("TIER2_TIMEOUT", "300.0"))
+NIM_BASE_URL = settings.llm.nim_base_url
+NIM_API_KEY = settings.llm.nim_api_key
+TIER2_MODEL = settings.llm.tier2_model
+TIER2_TIMEOUT = settings.llm.tier2_timeout
 
 # System Instruction for synthesis report generation
 # 👑 Ver 4.0 — 테마별 컨센서스 구조 + Structural Alpha Spotlight + 충돌 입체화.
@@ -402,8 +399,7 @@ def _md_to_html_email(md_content: str) -> str:
 
 def _resolve_recipients() -> list[str]:
     """이메일 수신자 목록 — EMAIL_TO(콤마 구분 복수 수신자) 우선, 없으면 GMAIL_USER 자기발송."""
-    raw = os.environ.get("EMAIL_TO") or os.environ.get("GMAIL_USER") or ""
-    return [r.strip() for r in raw.split(",") if r.strip()]
+    return list(settings.email.recipients)
 
 
 def send_email_report(subject: str, body_content: str):
@@ -412,8 +408,8 @@ def send_email_report(subject: str, body_content: str):
     본문은 HTML(MD→변환)로 발송 — 표/헤딩/굵게 가독성 확보. 백링크는 strip.
     수신자: EMAIL_TO(콤마 구분 복수) 또는 GMAIL_USER 자기발송.
     """
-    gmail_user = os.environ.get("GMAIL_USER")
-    gmail_password = os.environ.get("GMAIL_APP_PASSWORD")
+    gmail_user = settings.email.user
+    gmail_password = settings.email.password
 
     if not gmail_user or not gmail_password:
         print("[INFO] Gmail SMTP config missing in .env. Skipping email notification.")
@@ -435,7 +431,7 @@ def send_email_report(subject: str, body_content: str):
         msg.attach(MIMEText(body_content, 'plain', 'utf-8'))
         msg.attach(MIMEText(html_body, 'html', 'utf-8'))
 
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        with smtplib.SMTP_SSL(settings.email.smtp_host, settings.email.smtp_port) as server:
             server.login(gmail_user, gmail_password_clean)
             server.sendmail(gmail_user, recipients, msg.as_string())
 

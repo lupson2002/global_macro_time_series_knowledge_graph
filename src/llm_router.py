@@ -17,26 +17,22 @@ NVIDIA NIM 혼잡 완화를 목적으로, 저비용·저지연 프로바이더�
 """
 from __future__ import annotations
 
-import os
-
-from dotenv import load_dotenv
 from openai import OpenAI
 
-# .env 로드 — 호출자 load_dotenv 순서와 무관하게 키를 항상 확보
-load_dotenv()
+from src.config import settings
 
 # ── NIM 폴백 (기존 3-Tier 공용) ──
-NIM_BASE_URL = os.environ.get("NIM_BASE_URL", "http://localhost:8000")
-NIM_API_KEY = os.environ.get("NIM_API_KEY", "proxy-rotates-keys")
-NIM_MODEL = os.environ.get("TIER2_MODEL", "deepseek-ai/deepseek-v4-flash")
+NIM_BASE_URL = settings.llm.nim_base_url
+NIM_API_KEY = settings.llm.nim_api_key
+NIM_MODEL = settings.llm.tier2_model
 
 # ── 프로바이더 정의 (이름, env 키, base_url, 모델) ──
 # Cerebras: llama-3.3-70b 는 이 키에서 접근 불가(404) → 키로 접근 가능한 gpt-oss-120b 사용
 # (실측: /v1/models → zai-glm-4.7 / gemma-4-31b / gpt-oss-120b)
 _PROVIDER_SPECS = [
-    ("Cerebras", "CEREBRAS_API_KEY", "https://api.cerebras.ai/v1", "gpt-oss-120b"),
-    ("Groq_Key1", "GROQ_API_KEY_1", "https://api.groq.com/openai/v1", "llama-3.3-70b-versatile"),
-    ("Groq_Key2", "GROQ_API_KEY_2", "https://api.groq.com/openai/v1", "llama-3.3-70b-versatile"),
+    ("Cerebras", settings.llm.cerebras_api_key, "https://api.cerebras.ai/v1", "gpt-oss-120b"),
+    ("Groq_Key1", settings.llm.groq_api_key_1, "https://api.groq.com/openai/v1", "llama-3.3-70b-versatile"),
+    ("Groq_Key2", settings.llm.groq_api_key_2, "https://api.groq.com/openai/v1", "llama-3.3-70b-versatile"),
 ]
 
 
@@ -45,8 +41,7 @@ class Llama70BRouter:
 
     def __init__(self, timeout: float = 120.0):
         self._providers: list[tuple[str, OpenAI, str]] = []  # (name, client, model)
-        for name, env_key, base_url, model in _PROVIDER_SPECS:
-            api_key = os.environ.get(env_key)
+        for name, api_key, base_url, model in _PROVIDER_SPECS:
             if api_key:
                 self._providers.append(
                     (name, OpenAI(base_url=base_url, api_key=api_key, timeout=timeout), model)

@@ -19,7 +19,6 @@ from __future__ import annotations
 import argparse
 import datetime as _dt
 import json
-import os
 import shutil
 import smtplib
 import sqlite3
@@ -28,11 +27,11 @@ import sys
 from email.mime.text import MIMEText
 from pathlib import Path
 
-from dotenv import load_dotenv
-
-load_dotenv()
-
 PROJECT_DIR = Path(__file__).resolve().parent.parent
+if str(PROJECT_DIR) not in sys.path:
+    sys.path.insert(0, str(PROJECT_DIR))
+from src.config import settings
+
 VENV_PY = PROJECT_DIR / ".venv" / "bin" / "python"
 DB_PATH = PROJECT_DIR / "data" / "blog_publish.db"
 DRAFT_PATH = PROJECT_DIR / "tistory_draft.md"
@@ -85,13 +84,12 @@ def insert_log(platform: str, status: str, url: str, title: str, error: str, scr
 # ── 이메일 알림 ───────────────────────────────────────────────────
 def _resolve_recipients() -> list[str]:
     """이메일 수신자 목록 — EMAIL_TO(콤마 구분 복수 수신자) 우선, 없으면 GMAIL_USER 자기발송."""
-    raw = os.environ.get("EMAIL_TO") or os.environ.get("GMAIL_USER") or ""
-    return [r.strip() for r in raw.split(",") if r.strip()]
+    return list(settings.email.recipients)
 
 
 def send_email(subject: str, body: str) -> None:
-    user = os.environ.get("GMAIL_USER")
-    pw = os.environ.get("GMAIL_APP_PASSWORD")
+    user = settings.email.user
+    pw = settings.email.password
     if not user or not pw:
         print("[이메일] GMAIL_USER/GMAIL_APP_PASSWORD 미설정 — 스킵")
         return
@@ -101,7 +99,7 @@ def send_email(subject: str, body: str) -> None:
         msg["From"] = user
         msg["To"] = ", ".join(recipients)
         msg["Subject"] = subject
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as s:
+        with smtplib.SMTP_SSL(settings.email.smtp_host, settings.email.smtp_port) as s:
             s.login(user, pw.replace(" ", ""))
             s.sendmail(user, recipients, msg.as_string())
         print(f"[이메일] 발송 완료: {subject} → {', '.join(recipients)}")

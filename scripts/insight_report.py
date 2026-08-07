@@ -162,20 +162,18 @@ def build_report(no_llm: bool = False, expiry: str = "timebox") -> tuple[str, di
 
 def send_email_with_visuals(md: str, summary: dict, subject: str) -> None:
     """마크다운 → HTML + 대시보드 PNG inline + pyvis/plotly HTML 첨부 발송."""
-    import os
     import smtplib
     from email.mime.multipart import MIMEMultipart
     from email.mime.text import MIMEText
     from email.mime.application import MIMEApplication
-    from dotenv import load_dotenv
+    from src.config import settings
     from src.report_generator import _md_to_html_email, send_email_report, _resolve_recipients  # noqa: F401 (fallback)
 
-    load_dotenv(PROJECT_ROOT / ".env")
-    user = os.environ.get("GMAIL_USER") or os.environ.get("SMTP_USER")
-    pwd = os.environ.get("GMAIL_APP_PASSWORD") or os.environ.get("SMTP_PASS")
+    user = settings.email.user
+    pwd = settings.email.password
     recipients = _resolve_recipients()
-    host = os.environ.get("SMTP_HOST", "smtp.gmail.com")
-    port = int(os.environ.get("SMTP_PORT", "465"))
+    host = settings.email.smtp_host
+    port = settings.email.smtp_port
     if not all([user, pwd, recipients]):
         print("SMTP 설정 부족 — 리포트만 생성, 메일 미발송")
         return

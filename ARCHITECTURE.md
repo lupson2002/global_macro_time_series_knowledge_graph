@@ -23,6 +23,8 @@ Discovery -> Ingestion -> Analysis -> Relevance gate -> Persistence -> Derived p
 
 ## 3. LLM architecture
 
+런타임 설정은 `src/config.py`가 `.env`를 로드해 `Settings`/`LLMSettings`/`EmbeddingSettings`/`EmailSettings`/`TelegramSettings`로 검증한다. 소비 모듈은 직접 `os.environ`을 읽지 않고 공통 `settings`를 사용한다. 기존 모듈 상수는 호환성을 위한 alias로 유지한다.
+
 ### General generation
 
 `src/cloud_client.py::chat_completion`

@@ -31,13 +31,12 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
 import sys
 import time
 from typing import Any
 
 import httpx
-from dotenv import load_dotenv
+from src.config import settings
 
 # Telegram (python-telegram-bot v22+)
 try:
@@ -60,21 +59,19 @@ from src.lancedb_store import semantic_search_macro, get_vect_index_status
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-load_dotenv()
+TELEGRAM_BOT_TOKEN = settings.telegram.bot_token
+OLLAMA_PRO_API_KEY = settings.telegram.ollama_api_key
+OLLAMA_PRO_BASE_URL = settings.telegram.ollama_base_url
+OLLAMA_PRO_MODEL = settings.telegram.ollama_model
+MCP_TRANSPORT = settings.telegram.mcp_transport
 
-TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
-OLLAMA_PRO_API_KEY = os.environ.get("OLLAMA_PRO_API_KEY", "").strip()
-OLLAMA_PRO_BASE_URL = os.environ.get("OLLAMA_PRO_BASE_URL", "https://ollama.com/v1").strip()
-OLLAMA_PRO_MODEL = os.environ.get("OLLAMA_PRO_MODEL", "llama3.1:70b").strip()
-MCP_TRANSPORT = os.environ.get("MCP_TRANSPORT", "inproc").strip().lower()  # 'inproc' | 'stdio'
-
-MAX_TOOL_ITER = int(os.environ.get("MAX_TOOL_ITER", "6"))
-OLLAMA_TIMEOUT_S = float(os.environ.get("OLLAMA_TIMEOUT_S", "120"))
-TELEGRAM_MSG_LIMIT = 4000  # Telegram hard limit is 4096; we stay under.
+MAX_TOOL_ITER = settings.telegram.max_tool_iterations
+OLLAMA_TIMEOUT_S = settings.telegram.timeout
+TELEGRAM_MSG_LIMIT = settings.telegram.message_limit
 
 logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    level=os.environ.get("LOG_LEVEL", "INFO"),
+    level=settings.telegram.log_level,
 )
 logger = logging.getLogger("telegram_bot")
 

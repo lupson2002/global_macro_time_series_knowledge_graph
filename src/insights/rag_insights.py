@@ -5,22 +5,16 @@ lancedb_store.search_hybrid + NIM 패턴 재사용 (구 turbovec_server 제거).
 """
 from __future__ import annotations
 
-import os
 import json
 
-from dotenv import load_dotenv
+from src.config import settings
 
-load_dotenv()
-
-NIM_BASE_URL = os.environ.get("NIM_BASE_URL", "http://localhost:8000")
-NIM_API_KEY = os.environ.get("NIM_API_KEY", "proxy-rotates-keys")
+NIM_BASE_URL = settings.llm.nim_base_url
+NIM_API_KEY = settings.llm.nim_api_key
 # 2026-08-06 사용자 결정: insight/주간 추론도 flash 로 통일(pro→flash 다운그레이드 승인).
 # INSIGHT_MODEL > TIER3_MODEL > 기본값 순. .env 로 오버라이드 가능.
-INSIGHT_MODEL = os.environ.get(
-    "INSIGHT_MODEL",
-    os.environ.get("TIER3_MODEL", "deepseek-ai/deepseek-v4-flash"),
-)
-TIER2_TIMEOUT = float(os.environ.get("TIER2_TIMEOUT", "300.0"))
+INSIGHT_MODEL = settings.llm.insight_model
+TIER2_TIMEOUT = settings.llm.tier2_timeout
 
 
 def _parse_json_list(raw):

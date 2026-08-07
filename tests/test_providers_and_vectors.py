@@ -25,9 +25,9 @@ class CloudClientTests(unittest.TestCase):
         ollama.chat.return_value = types.SimpleNamespace(
             message=types.SimpleNamespace(content=" primary "), done_reason="stop"
         )
-        with patch.object(cloud_client, "_get_ollama_client", return_value=ollama), patch.object(
-            cloud_client, "_get_openai_client"
-        ) as nim:
+        with patch.object(cloud_client, "OLLAMA_PRO_API_KEY", "configured"), patch.object(
+            cloud_client, "_get_ollama_client", return_value=ollama
+        ), patch.object(cloud_client, "_get_openai_client") as nim:
             result = cloud_client.chat_completion("system", "user")
         self.assertEqual(result, "primary")
         nim.assert_not_called()
@@ -38,9 +38,11 @@ class CloudClientTests(unittest.TestCase):
         ollama.chat.side_effect = RuntimeError("offline")
         nim = Mock()
         nim.chat.completions.create.return_value = completion(" fallback ")
-        with patch.object(cloud_client, "_get_ollama_client", return_value=ollama), patch.object(
-            cloud_client, "_get_openai_client", return_value=nim
-        ), patch.object(cloud_client.time, "sleep"):
+        with patch.object(cloud_client, "OLLAMA_PRO_API_KEY", "configured"), patch.object(
+            cloud_client, "_get_ollama_client", return_value=ollama
+        ), patch.object(cloud_client, "_get_openai_client", return_value=nim), patch.object(
+            cloud_client.time, "sleep"
+        ):
             result = cloud_client.chat_completion(
                 "system", "user", nim_model="nim-test", response_format={"type": "json_object"}
             )
@@ -49,6 +51,16 @@ class CloudClientTests(unittest.TestCase):
         kwargs = nim.chat.completions.create.call_args.kwargs
         self.assertEqual(kwargs["model"], "nim-test")
         self.assertEqual(kwargs["response_format"], {"type": "json_object"})
+
+    def test_missing_ollama_key_skips_directly_to_nim(self):
+        nim = Mock()
+        nim.chat.completions.create.return_value = completion(" fallback ")
+        with patch.object(cloud_client, "OLLAMA_PRO_API_KEY", ""), patch.object(
+            cloud_client, "_get_ollama_client"
+        ) as ollama, patch.object(cloud_client, "_get_openai_client", return_value=nim):
+            result = cloud_client.chat_completion("system", "user")
+        self.assertEqual(result, "fallback")
+        ollama.assert_not_called()
 
 
 class MultiProviderRouterTests(unittest.TestCase):

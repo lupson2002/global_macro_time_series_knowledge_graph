@@ -20,7 +20,6 @@ SQLite(`data/macro_knowledge.db`)가 진실 원본 — LanceDB 는 시맨틱 검
 from __future__ import annotations
 
 import json
-import os
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -30,23 +29,17 @@ import pyarrow as pa
 
 import lancedb
 
-# ⚠️ EMBEDDING_DIM(기본 256, .env 시 4096) 은 embedder import 시점에 확정 —
-# 프로세스의 load_dotenv 순서와 무관하게 일관되게 .env 를 먼저 로드해
-# 벡터 차원 불일치("no vector column")를 방지.
-from dotenv import load_dotenv
-
-load_dotenv()
-
+from src.config import settings
 from src.embedder import embed_one, embed_texts
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DB_DIR = PROJECT_ROOT / "data" / "lancedb_store"
+PROJECT_ROOT = settings.storage.project_root
+DB_DIR = settings.storage.lancedb_dir
 TABLE_NAME = "macro_vectors"
-DB_PATH = PROJECT_ROOT / "data" / "macro_knowledge.db"
+DB_PATH = settings.storage.sqlite_path
 
 # ⚠️ embedder.DEFAULT_DIM 은 embedder 가 먼저 import 되면 .env 미로드로 256 이 동결될 수 있음.
 # import 순서와 무관하게 .env(EMBEDDING_DIM=4096) 기준으로 직접 계산해 일관 유지.
-VECTOR_DIM = int(os.environ.get("EMBEDDING_DIM", "256"))
+VECTOR_DIM = settings.embedding.dimension
 
 
 # ---------------------------------------------------------------------------

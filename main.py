@@ -19,16 +19,12 @@ import sys
 import time
 import sqlite3
 from pathlib import Path
-from dotenv import load_dotenv
 from tqdm import tqdm
 
 # Import modules from src
 from src.ingestion import get_youtube_transcript, fetch_video_ids_from_channel
 from src.local_llm_client import LocalLLMClient
 from src.exporter import SQLiteExporter, ObsidianMDExporter
-
-# Load environment variables from .env if present
-load_dotenv()
 
 # 👑 [Ver 3.1] 76 매크로 채널 풀 (요건 2: Backfill Roster)
 # Stage 2 is now deepseek-ai/deepseek-v4-flash via nvidia-api-proxy (localhost:8000).

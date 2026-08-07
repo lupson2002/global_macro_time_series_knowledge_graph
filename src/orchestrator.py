@@ -9,19 +9,15 @@ Grand Reasoner Orchestrator for Global Macro Time-Series Knowledge Graph
 5. Formats and exports a comprehensive 'Global Macro Asset Allocation Strategy' report to Obsidian Vault.
 """
 
-import os
 import json
 import time
 import asyncio
 import datetime
 from pathlib import Path
-from dotenv import load_dotenv
 import logging
+from src.config import settings
 
 logger = logging.getLogger(__name__)
-
-# Load environment variables
-load_dotenv()
 
 # ---------------------------------------------------------------------------
 # Path Resolution & Importer
@@ -38,10 +34,10 @@ from src.report_generator import send_email_report
 # Configuration Variables (Default with Environment overrides)
 # ---------------------------------------------------------------------------
 # Tier 3 NIM fallback configuration. General generation uses cloud_client.
-NIM_BASE_URL = os.environ.get("NIM_BASE_URL", "http://localhost:8000")
-NIM_API_KEY = os.environ.get("NIM_API_KEY", "proxy-rotates-keys")
+NIM_BASE_URL = settings.llm.nim_base_url
+NIM_API_KEY = settings.llm.nim_api_key
 # 2026-08-06 사용자 결정: 주간 보고서는 flash 로 통일(pro→flash 다운그레이드 승인). .env 로 오버라이드 가능.
-TIER3_MODEL = os.environ.get("TIER3_MODEL", "deepseek-ai/deepseek-v4-flash")
+TIER3_MODEL = settings.llm.tier3_model
 # 👑 구 REASONER_MODEL env(claude-3-5-sonnet 등 Anthropic 모델명)는 NIM 통일로 무효 —
 # back-compat 덮어쓰기 제거(.env 의 REASONER_MODEL 이 NIM 없는 모델 → 404 방지).
 
@@ -487,15 +483,15 @@ def _send_cio_email_with_visuals(subject: str, body_md: str, viz_paths: dict) ->
     from email.mime.application import MIMEApplication
     from src.report_generator import _md_to_html_email, _resolve_recipients
 
-    user = os.environ.get("GMAIL_USER")
-    pwd = os.environ.get("GMAIL_APP_PASSWORD")
+    user = settings.email.user
+    pwd = settings.email.password
     if not user or not pwd:
         print("[INFO] Gmail 설정 없음 — 메일 스킵")
         return
     recipients = _resolve_recipients()
     pwd_clean = pwd.replace(" ", "")
-    host = os.environ.get("SMTP_HOST", "smtp.gmail.com")
-    port = int(os.environ.get("SMTP_PORT", "465"))
+    host = settings.email.smtp_host
+    port = settings.email.smtp_port
 
     html_body = _md_to_html_email(body_md)
     msg = MIMEMultipart("mixed")

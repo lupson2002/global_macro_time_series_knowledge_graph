@@ -24,6 +24,8 @@ import requests
 from pathlib import Path
 from youtube_transcript_api import YouTubeTranscriptApi
 
+from src.config import settings
+
 
 # Hard timeout for any single YouTube HTTP call (seconds).
 # Prevents silent hang on IP block (older youtube-transcript-api ≤0.6 used to
@@ -140,11 +142,11 @@ def get_youtube_transcript(video_id: str) -> str:
         raise ValueError("Invalid YouTube video ID.")
 
     project_dir = Path(__file__).resolve().parent.parent
-    cookies_file = os.environ.get("YOUTUBE_COOKIES_FILE") or "cookies.txt"
+    cookies_file = settings.youtube.cookies_file
     cookies_path = Path(cookies_file)
     if not cookies_path.is_absolute():
         cookies_path = project_dir / cookies_file
-    proxy_url = os.environ.get("YOUTUBE_PROXY")
+    proxy_url = settings.youtube.proxy
 
     if cookies_path.exists():
         print(f"   [INFO] YouTube cookies found at {cookies_path} (yt-dlp will use them opportunistically)")

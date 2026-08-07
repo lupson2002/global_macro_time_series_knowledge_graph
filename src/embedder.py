@@ -18,7 +18,6 @@ Output: numpy.ndarray shape (dim,), dtype float32, L2-normalized.
 """
 from __future__ import annotations
 
-import os
 import hashlib
 import math
 import logging
@@ -27,12 +26,14 @@ from typing import List, Optional
 import numpy as np
 import requests
 
+from src.config import settings
+
 logger = logging.getLogger(__name__)
 
 # Default output dim. 256 keeps `.tvec` files small and is friendly to the
 # mini-PC's RAM budget while preserving enough resolution for ANN search.
 # 👑 [B2] env override (EMBEDDING_DIM) — remote 모델 dim 맞출 때 (예: nv-embed-v1=4096).
-DEFAULT_DIM = int(os.environ.get("EMBEDDING_DIM", "256"))
+DEFAULT_DIM = settings.embedding.dimension
 
 
 # ---------------------------------------------------------------------------
@@ -45,11 +46,11 @@ def _embed_remote(texts: List[str], dim: int) -> Optional[np.ndarray]:
       • Ollama Pro: { "embeddings": [[...]] }
       • OpenAI:     { "data": [{"embedding": [...]}, ...] }
     """
-    url = os.environ.get("EMBEDDING_API_URL")
+    url = settings.embedding.api_url
     if not url:
         return None
-    api_key = os.environ.get("EMBEDDING_API_KEY", "")
-    model = os.environ.get("EMBEDDING_MODEL", "nomic-embed-text")
+    api_key = settings.embedding.api_key
+    model = settings.embedding.model
 
     headers = {"Content-Type": "application/json"}
     if api_key:
@@ -101,7 +102,7 @@ def _get_st_model(model_id: str):
 
 
 def _embed_local_st(texts: List[str], dim: int) -> Optional[np.ndarray]:
-    model_id = os.environ.get("EMBEDDING_LOCAL_MODEL")
+    model_id = settings.embedding.local_model
     if not model_id:
         return None
     try:
@@ -167,7 +168,7 @@ def embed_texts(texts: List[str], dim: int = DEFAULT_DIM) -> np.ndarray:
     vecs = _embed_remote(texts, dim)
     if vecs is not None:
         if vecs.shape[1] == dim:
-            _LAST_SUCCESS_BACKEND = f"remote:{os.environ.get('EMBEDDING_API_URL', '')}"
+            _LAST_SUCCESS_BACKEND = f"remote:{settings.embedding.api_url}"
             return vecs.astype(np.float32, copy=False)
         logger.warning(
             "[embedder] remote dim %d != target %d — rejecting truncate "
@@ -179,7 +180,7 @@ def embed_texts(texts: List[str], dim: int = DEFAULT_DIM) -> np.ndarray:
     vecs = _embed_local_st(texts, dim)
     if vecs is not None:
         if vecs.shape[1] == dim:
-            _LAST_SUCCESS_BACKEND = f"local-st:{os.environ.get('EMBEDDING_LOCAL_MODEL', '')}"
+            _LAST_SUCCESS_BACKEND = f"local-st:{settings.embedding.local_model}"
             return vecs.astype(np.float32, copy=False)
         logger.warning(
             "[embedder] local ST dim %d != target %d — rejecting truncate, falling back.",
@@ -222,10 +223,10 @@ def backend_name() -> str:
     """
     if _LAST_SUCCESS_BACKEND is not None:
         return _LAST_SUCCESS_BACKEND
-    if os.environ.get("EMBEDDING_API_URL"):
-        return f"remote:{os.environ['EMBEDDING_API_URL']}"
-    if os.environ.get("EMBEDDING_LOCAL_MODEL"):
-        return f"local-st:{os.environ['EMBEDDING_LOCAL_MODEL']}"
+    if settings.embedding.api_url:
+        return f"remote:{settings.embedding.api_url}"
+    if settings.embedding.local_model:
+        return f"local-st:{settings.embedding.local_model}"
     return "hash-fallback"
 
 

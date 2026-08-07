@@ -16,7 +16,6 @@ Usage:
 """
 from __future__ import annotations
 
-import os
 import smtplib
 import sys
 from datetime import datetime, timedelta, timezone
@@ -28,9 +27,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from dotenv import load_dotenv  # noqa: E402
-
-load_dotenv(PROJECT_ROOT / ".env")
+from src.config import settings  # noqa: E402
 
 # 같은 디렉터리 코어 엔진 (sys.path[0] = scripts/insights)
 from market_narrative import generate_narrative_report, INSIGHT_MODEL  # noqa: E402
@@ -74,11 +71,11 @@ def save_outputs(md: str, today: str) -> tuple[Path, Path]:
 
 def send_narrative_email(md: str, subject: str) -> None:
     """내러티브 리포트 Gmail 발송 — 본문 plain+HTML(백링크 strip). 실패 시 경고만."""
-    user = os.environ.get("GMAIL_USER") or os.environ.get("SMTP_USER")
-    pwd = os.environ.get("GMAIL_APP_PASSWORD") or os.environ.get("SMTP_PASS")
+    user = settings.email.user
+    pwd = settings.email.password
     recipients = _resolve_recipients()
-    host = os.environ.get("SMTP_HOST", "smtp.gmail.com")
-    port = int(os.environ.get("SMTP_PORT", "465"))
+    host = settings.email.smtp_host
+    port = settings.email.smtp_port
     if not all([user, pwd, recipients]):
         print("[INFO] Gmail 설정 없음 — 메일 스킵")
         return

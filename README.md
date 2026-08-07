@@ -140,7 +140,7 @@ python scripts/insights/run_market_narrative.py
 
 ## 환경변수
 
-`.env.example`을 기준으로 합니다.
+`.env.example`을 기준으로 합니다. 모든 설정은 `src/config.py`의 immutable dataclass로 한 번만 로드·검증되며 기존 환경변수 이름은 그대로 유지됩니다.
 
 - Ollama: `OLLAMA_PRO_API_KEY`, `OLLAMA_PRO_BASE_URL`, `OLLAMA_PRO_MODEL`
 - NIM fallback: `NIM_BASE_URL`, `NIM_API_KEY`, `TIER2_MODEL`, `TIER3_MODEL`, `INSIGHT_MODEL`
@@ -149,6 +149,8 @@ python scripts/insights/run_market_narrative.py
 - YouTube: `YOUTUBE_PROXY`, `YOUTUBE_COOKIES_FILE`
 - Email: `GMAIL_USER`, `GMAIL_APP_PASSWORD`, `EMAIL_TO`
 - Telegram: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
+
+숫자 설정은 0보다 커야 하고 URL은 `http://` 또는 `https://`로 시작해야 합니다. `MCP_TRANSPORT`는 `inproc` 또는 `stdio`만 허용됩니다. 선택 provider API key가 비어 있으면 해당 provider를 즉시 건너뛰고 다음 폴백으로 진행합니다.
 
 `.env`, `cookies.txt`, 실패 스크린샷과 운영 로그에는 민감 정보가 포함될 수 있습니다.
 
