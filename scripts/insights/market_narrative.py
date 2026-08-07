@@ -29,6 +29,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.config import settings  # noqa: E402
+from src.derived_llm import DerivedLLMRequest, complete_derived  # noqa: E402
 
 from src.insights.cross_matrix import asset_consensus_matrix  # noqa: E402
 from src.insights.rag_insights import (  # noqa: E402
@@ -262,17 +263,11 @@ def _call_llm_narrative(system: str, user: str, max_tokens: int = NARRATIVE_MAX_
 
     기존 코드 수정 없이 market_narrative.py 전용 래퍼로 독립 실행.
     """
-    from src import cloud_client
-
     try:
-        text = cloud_client.chat_completion(
-            system=system,
-            user=user,
-            max_tokens=max_tokens,
-            temperature=0.3,
-            nim_model=INSIGHT_MODEL,
-            ollama_attempts=3,
-        )
+        text = complete_derived(DerivedLLMRequest(
+            pipeline="narrative", system=system, user=user, max_tokens=max_tokens,
+            temperature=0.3, nim_model=INSIGHT_MODEL, ollama_attempts=3,
+        )).content
         if not text.strip():
             raise RuntimeError(f"Ollama/NIM({INSIGHT_MODEL}) 빈 응답")
         return text

@@ -17,6 +17,7 @@ from pathlib import Path
 import logging
 from src.config import settings
 from src.email_delivery import EmailAttachment, send_multipart_email
+from src.derived_llm import DerivedLLMRequest, complete_derived
 from src.json_utils import parse_json_list as _parse_json_list
 from src.report_rendering import markdown_table_cell, markdown_to_email_html, render_frontmatter
 
@@ -219,15 +220,10 @@ async def aggregate_macro_context() -> str:
 
 def _call_nim_reasoner_sync(system: str, user: str) -> str:
     """동기 LLM 호출(asyncio.to_thread 로 비동기화) — Ollama Cloud 우선, NIM 폴백."""
-    from src import cloud_client
-    content = cloud_client.chat_completion(
-        system=system,
-        user=user,
-        max_tokens=8192,
-        temperature=0.3,
-        nim_model=TIER3_MODEL,
-        ollama_attempts=4,
-    )
+    content = complete_derived(DerivedLLMRequest(
+        pipeline="cio", system=system, user=user, max_tokens=8192,
+        temperature=0.3, nim_model=TIER3_MODEL, ollama_attempts=4,
+    )).content
     if not content:
         raise RuntimeError(f"Ollama/NIM returned empty content for {TIER3_MODEL}")
     return content

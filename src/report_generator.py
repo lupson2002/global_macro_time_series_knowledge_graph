@@ -17,6 +17,7 @@ from pathlib import Path
 import re as _re
 from src.config import settings
 from src.email_delivery import send_multipart_email
+from src.derived_llm import DerivedLLMRequest, complete_derived
 from src.json_utils import parse_json_list
 from src.report_rendering import markdown_to_email_html as _md_to_html_email, render_frontmatter
 
@@ -689,16 +690,11 @@ def generate_morning_report(db_path: str, vault_dir: str, api_key: str = None, l
     )
     prompt = f"Today's Date: {today_str}\n\nHere is the raw input data:\n{feed_text}"
 
-    from src import cloud_client
     # Provider retries and fallback are centralized to avoid retry-chain multiplication.
-    report_content = cloud_client.chat_completion(
-        system=system_msg,
-        user=prompt,
-        max_tokens=4096,
-        temperature=0.2,
-        nim_model=TIER2_MODEL,
-        ollama_attempts=5,
-    )
+    report_content = complete_derived(DerivedLLMRequest(
+        pipeline="daily", system=system_msg, user=prompt, max_tokens=4096,
+        temperature=0.2, nim_model=TIER2_MODEL, ollama_attempts=5,
+    )).content
 
     report_content = (report_content or "").strip()
     # 빈 응답 가드 — 빈 리포트 저장 방지.

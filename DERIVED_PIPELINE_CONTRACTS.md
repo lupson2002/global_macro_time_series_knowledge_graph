@@ -27,7 +27,9 @@ characterization test로 고정한 안전 기준선이다. 이 단계에서는 �
    `src/report_rendering.py`로 frontmatter envelope, table-cell escape, Gmail HTML 렌더링을
    이동했고 보고서별 필드·순서·태그는 각 호출부에 유지했다.
 4. 기존 cloud client 위에 파생 리포트용 요청/결과 metadata 경계를 둔다. 모델, prompt,
-   재시도 횟수는 이 단계에서 변경하지 않는다.
+   재시도 횟수는 이 단계에서 변경하지 않는다. **16단계 완료:** `src/derived_llm.py`의
+   typed request/result가 Daily, CIO, Insight, Narrative의 pipeline·provider·model·latency·
+   attempt 이력을 연결하며 기존 공개 함수는 계속 문자열을 반환한다.
 5. 마지막으로 네 진입점을 순수 계산과 외부 부작용을 연결하는 얇은 orchestration으로 줄인다.
 
 ## 변경 금지 범위

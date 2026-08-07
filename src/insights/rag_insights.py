@@ -6,6 +6,7 @@ lancedb_store.search_hybrid + NIM 패턴 재사용 (구 turbovec_server 제거).
 from __future__ import annotations
 
 from src.config import settings
+from src.derived_llm import DerivedLLMRequest, complete_derived
 from src.json_utils import parse_json_list as _parse_json_list
 
 NIM_BASE_URL = settings.llm.nim_base_url
@@ -98,10 +99,10 @@ def search_macro_sync(query: str, top_k: int = 10, use_timebox: bool = True) -> 
 
 def _call_llm(system: str, user: str) -> str:
     """👑 [Ollama 전환] cloud_client (Ollama Cloud 우선, NIM 폴백)."""
-    from src import cloud_client
-    return cloud_client.chat_completion(
-        system=system, user=user, max_tokens=2048, temperature=0.3, nim_model=INSIGHT_MODEL,
-    )
+    return complete_derived(DerivedLLMRequest(
+        pipeline="insight", system=system, user=user, max_tokens=2048,
+        temperature=0.3, nim_model=INSIGHT_MODEL,
+    )).content
 
 
 SYSTEM_PROMPT = """당신은 글로벌 매크로 퀀트 큐레이터. 제공된 구루들의 발언(views)과 정량 신호(bull_bear, conviction, contrarian)를 종합해 **한국어 인사이트**를 도출.

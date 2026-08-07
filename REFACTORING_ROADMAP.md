@@ -164,3 +164,21 @@ delivery adapter, 렌더링 envelope, 파생 LLM 경계, 얇은 진입점 순으
 
 다음 4차 구현은 기존 `cloud_client` 위에 파생 리포트 요청/결과 metadata 경계를 두되
 provider, model, prompt, timeout과 재시도 횟수를 그대로 유지한다.
+
+## 다섯 번째 구현 파동 4차 결과
+
+- `DerivedLLMRequest`가 pipeline 이름과 system/user 전문, token budget, temperature,
+  Ollama/NIM model 및 attempt budget을 명시한다.
+- `DerivedLLMResult`가 기존 `CompletionResult`의 content, provider, model, latency와 전체
+  attempt 이력을 pipeline 이름에 연결한다.
+- Daily(4096/0.2/5회), CIO(8192/0.3/4회), Insight(2048/0.3/3회), Narrative
+  (설정 token budget/0.3/3회)의 호출 인자를 그대로 유지했다.
+- 공통 경계는 기존 `cloud_client.chat_completion_result`를 정확히 한 번 호출하며 자체
+  retry를 추가하지 않는다.
+- 기존 `generate_morning_report`, `_call_nim_reasoner_sync`, `_call_llm`,
+  `_call_llm_narrative`는 계속 text를 반환하고 기존 빈 응답/예외 처리를 유지한다.
+- Groq/Cerebras 우선인 번역과 Blog `Llama70BRouter`는 provider 순서를 보존하기 위해
+  이번 공통화 범위에서 제외했다.
+
+다음 5차 구현은 네 파생 진입점을 계산·렌더링·delivery adapter를 연결하는 얇은
+orchestration으로 정리하되 파일 경로와 실행 순서를 characterization test로 먼저 고정한다.

@@ -22,6 +22,7 @@ The suite uses temporary directories and mocks. It does not require network acce
 - `test_json_utils.py`: malformed/non-array JSON fallback and explicit native-list compatibility mode.
 - `test_email_delivery.py`: plain/HTML MIME shape, attachment filtering, SMTP options, and pipeline-specific fallback policies.
 - `test_report_rendering.py`: exact frontmatter envelope, Daily metadata snapshot, table-cell escaping, and Gmail HTML styling.
+- `test_derived_llm.py`: derived request forwarding, pipeline identity, provider/model/latency/attempt metadata, and single-call failure propagation.
 - `test_pipeline_service.py`: full-transcript handoff, typed stage failures, IP-block abort, delay policy and retryable partial storage.
 - `test_main_cli.py`: CLI defaults, target ordering/deduplication, tier selection, backfill ID handling, delay sequencing, and exit status.
 - `test_domain.py`: read-only schema sections, malformed-section isolation, list copy safety, and canonical vector projection.
