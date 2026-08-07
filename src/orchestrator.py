@@ -16,6 +16,7 @@ import datetime
 from pathlib import Path
 import logging
 from src.config import settings
+from src.json_utils import parse_json_list as _parse_json_list
 
 logger = logging.getLogger(__name__)
 
@@ -46,19 +47,6 @@ TIER3_MODEL = settings.llm.tier3_model
 # 👑 [Ver 3.0] Fully-open async aggregation — every record, no truncation.
 # Parallel gather across all data dimensions; single text buffer output.
 # ---------------------------------------------------------------------------
-def _parse_json_list(raw):
-    """👑 [Ver 4.4] reports JSON 컬럼 안전 파싱 → list. NULL/빈/파손 → []."""
-    if not raw:
-        return []
-    if isinstance(raw, list):
-        return raw
-    try:
-        v = json.loads(raw)
-        return v if isinstance(v, list) else []
-    except (ValueError, TypeError):
-        return []
-
-
 def _render_report_block(idx: int, r: dict, contrarian: bool = False) -> str:
     """👑 [Ver 4.4] 단일 리포트를 CIO 컨텍스트 블록으로 렌더.
     인용·촉매·리스크·tactical·가격목표·수치·시간지평 포함(이전엔 core_thesis+scores만).

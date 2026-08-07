@@ -13,7 +13,6 @@ Usage:
 """
 from __future__ import annotations
 
-import json
 import sqlite3
 import sys
 from collections import Counter, defaultdict
@@ -28,6 +27,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from src.json_utils import parse_json_list as _jlist
+
 DB_PATH = PROJECT_ROOT / "data" / "macro_knowledge.db"
 
 
@@ -35,18 +36,6 @@ def _connect() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
-
-
-def _jlist(raw):
-    if not raw:
-        return []
-    if isinstance(raw, list):
-        return raw
-    try:
-        v = json.loads(raw)
-        return v if isinstance(v, list) else []
-    except (ValueError, TypeError):
-        return []
 
 
 # ---------------------------------------------------------------------------

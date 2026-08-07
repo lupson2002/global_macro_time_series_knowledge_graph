@@ -121,3 +121,15 @@ Telegram tool loop, insight 파이프라인이다.
 
 다음 구현은 가장 위험이 낮은 JSON/list 정규화 helper 통합부터 시작한다. 이후 메일
 delivery adapter, 렌더링 envelope, 파생 LLM 경계, 얇은 진입점 순으로 진행한다.
+
+## 다섯 번째 구현 파동 1차 결과
+
+- Daily, CIO, RAG Insight, Blog, Weekly Analytics, Exporter, LanceDB에 흩어진 JSON/list
+  parser를 `src/json_utils.py::parse_json_list`로 통합했다.
+- 기존 계약 차이는 `accept_native` 옵션으로 명시했다. 이미 파싱된 list를 허용하던
+  호출부는 같은 객체를 반환하고, SQLite JSON 컬럼 전용 호출부는 계속 거부한다.
+- 빈 값, 파손 JSON, JSON object, 비문자 입력은 모두 기존처럼 빈 list로 정규화한다.
+- 공개 출력, 저장 schema, 운영 데이터와 외부 서비스 호출은 변경하지 않았다.
+
+다음 2차 구현은 Daily/CIO/Insight의 메일 발송 계약을 characterization test로 먼저
+고정한 뒤 공통 delivery adapter로 이동한다.

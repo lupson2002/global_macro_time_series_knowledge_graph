@@ -16,7 +16,8 @@ characterization test로 고정한 안전 기준선이다. 이 단계에서는 �
 ## 관측된 중복과 통합 순서
 
 1. JSON/list 정규화 helper를 먼저 통합한다. 순수 함수이며 오류 입력 계약을 작은 테스트로
-   고정할 수 있어 변경 위험이 가장 낮다.
+   고정할 수 있어 변경 위험이 가장 낮다. **13단계 완료:** `src/json_utils.py`의
+   `parse_json_list()`로 통합했고, native list 허용 여부를 명시적 옵션으로 보존했다.
 2. SMTP 전송과 plain-text fallback을 delivery adapter로 모은다. Daily, CIO, Insight의
    수신자·제목·첨부·fallback 계약을 각각 고정한 뒤 이동한다.
 3. frontmatter, Markdown 표, HTML envelope 등 렌더링 경계를 통합한다. 파이프라인별 본문

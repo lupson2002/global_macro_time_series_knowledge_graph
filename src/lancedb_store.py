@@ -31,6 +31,7 @@ import lancedb
 
 from src.config import settings
 from src.embedder import embed_one, embed_texts
+from src.json_utils import parse_json_list
 
 PROJECT_ROOT = settings.storage.project_root
 DB_DIR = settings.storage.lancedb_dir
@@ -107,13 +108,7 @@ def _build_text(core_thesis: str = "", verbatim_quote: str = "", extra: str = ""
 
 def _safe_loads(raw):
     """JSON 문자열 안전 파싱 → list. NULL/빈/파손 → [] (backfill 방어)."""
-    if not raw:
-        return []
-    try:
-        v = json.loads(raw)
-        return v if isinstance(v, list) else []
-    except (ValueError, TypeError):
-        return []
+    return parse_json_list(raw, accept_native=False)
 
 
 # ---------------------------------------------------------------------------
@@ -329,15 +324,6 @@ def hydrate_views(video_ids: list[str]) -> list[dict[str, Any]]:
         nodes_by_vid.setdefault(n["video_id"], {"macro_theme": [], "asset_class": [], "ticker": []})
         nodes_by_vid[n["video_id"]].setdefault(n["node_type"], []).append(n["node_value"])
 
-    def _jlist(raw):
-        if not raw:
-            return []
-        try:
-            v = json.loads(raw)
-            return v if isinstance(v, list) else []
-        except (ValueError, TypeError):
-            return []
-
     out = []
     for vid in video_ids:
         r = reports.get(vid)
@@ -353,16 +339,16 @@ def hydrate_views(video_ids: list[str]) -> list[dict[str, Any]]:
             "time_box": r.get("time_box"),
             "core_thesis": r.get("core_thesis"),
             "verbatim_quote": r.get("verbatim_quote"),
-            "conditional_catalysts": _jlist(r.get("conditional_catalysts")),
-            "invalidation_risks": _jlist(r.get("invalidation_risks")),
-            "key_data_points": _jlist(r.get("key_data_points")),
-            "additional_quotes": _jlist(r.get("additional_quotes")),
-            "price_targets": _jlist(r.get("price_targets")),
+            "conditional_catalysts": parse_json_list(r.get("conditional_catalysts"), accept_native=False),
+            "invalidation_risks": parse_json_list(r.get("invalidation_risks"), accept_native=False),
+            "key_data_points": parse_json_list(r.get("key_data_points"), accept_native=False),
+            "additional_quotes": parse_json_list(r.get("additional_quotes"), accept_native=False),
+            "price_targets": parse_json_list(r.get("price_targets"), accept_native=False),
             "speaker_institution": r.get("speaker_institution"),
             "expectation_gap": r.get("expectation_gap"),
-            "causal_chain": _jlist(r.get("causal_chain")),
-            "tracking_indicators": _jlist(r.get("tracking_indicators")),
-            "tactical_stance": _jlist(r.get("tactical_stance")),
+            "causal_chain": parse_json_list(r.get("causal_chain"), accept_native=False),
+            "tracking_indicators": parse_json_list(r.get("tracking_indicators"), accept_native=False),
+            "tactical_stance": parse_json_list(r.get("tactical_stance"), accept_native=False),
             "bull_bear_score": s.get("bull_bear_score"),
             "conviction_score": s.get("conviction_score"),
             "contrarian_flag": bool(s.get("contrarian_flag")),

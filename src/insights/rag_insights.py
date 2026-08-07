@@ -5,9 +5,8 @@ lancedb_store.search_hybrid + NIM 패턴 재사용 (구 turbovec_server 제거).
 """
 from __future__ import annotations
 
-import json
-
 from src.config import settings
+from src.json_utils import parse_json_list as _parse_json_list
 
 NIM_BASE_URL = settings.llm.nim_base_url
 NIM_API_KEY = settings.llm.nim_api_key
@@ -15,19 +14,6 @@ NIM_API_KEY = settings.llm.nim_api_key
 # INSIGHT_MODEL > TIER3_MODEL > 기본값 순. .env 로 오버라이드 가능.
 INSIGHT_MODEL = settings.llm.insight_model
 TIER2_TIMEOUT = settings.llm.tier2_timeout
-
-
-def _parse_json_list(raw):
-    """👑 [Ver 4.4] reports JSON 컬럼 안전 파싱 → list. NULL/빈/파손 → []."""
-    if not raw:
-        return []
-    if isinstance(raw, list):
-        return raw
-    try:
-        v = json.loads(raw)
-        return v if isinstance(v, list) else []
-    except (ValueError, TypeError):
-        return []
 
 
 def _enriched_view_line(v: dict, thesis_limit: int = 200) -> str:

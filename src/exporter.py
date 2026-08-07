@@ -13,6 +13,7 @@ import re
 from pathlib import Path
 
 from src.domain import MacroView
+from src.json_utils import parse_json_list
 
 # ---------------------------------------------------------------------------
 # 1. SQLite Exporter
@@ -447,13 +448,7 @@ def _safe_json_list(raw) -> list:
     """👑 [Ver 4.3] reports JSON 컬럼(conditional_catalysts/invalidation_risks)을
     리스트로 안전 복원. NULL/빈/파손 → []. 백필·Daily 섹션5 양쪽에서 사용.
     """
-    if not raw:
-        return []
-    try:
-        v = json.loads(raw)
-        return v if isinstance(v, list) else []
-    except (ValueError, TypeError):
-        return []
+    return parse_json_list(raw, accept_native=False)
 
 
 if __name__ == "__main__":

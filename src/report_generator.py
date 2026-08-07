@@ -20,6 +20,7 @@ from pathlib import Path
 import markdown as _md
 import re as _re
 from src.config import settings
+from src.json_utils import parse_json_list
 
 # src.llm_router 등 src.* 패키지 import 를 위해 프로젝트 루트를 sys.path 에 추가
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -29,13 +30,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 def _safe_json_list(raw) -> list:
     """👑 [Ver 4.3] reports JSON 컬럼(catalysts/risks) 안전 파싱. NULL/빈/파손 → []."""
-    if not raw:
-        return []
-    try:
-        v = json.loads(raw)
-        return v if isinstance(v, list) else []
-    except (ValueError, TypeError):
-        return []
+    return parse_json_list(raw, accept_native=False)
 
 
 def _collect_translatable(reports: list) -> list:

@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import argparse
 import datetime
-import json
 import sqlite3
 import sys
 from pathlib import Path
@@ -29,6 +28,7 @@ PROJECT_DIR = Path(__file__).resolve().parent.parent
 if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))  # src.llm_router 등 src.* import 용
 from src.config import settings
+from src.json_utils import parse_json_list as _parse_json_list
 DB_PATH = PROJECT_DIR / "data" / "macro_knowledge.db"
 DAILY_DIR = PROJECT_DIR / "obsidian_vault" / "Daily_Reports"
 DRAFT_PATH = PROJECT_DIR / "tistory_draft.md"
@@ -37,18 +37,6 @@ NIM_BASE_URL = settings.llm.nim_base_url
 NIM_API_KEY = settings.llm.nim_api_key
 # 👑 [2026-08-06 L3] 미사용 BLOG_MODEL(정의만, EOL qwen3-next 기본값) 제거.
 BLOG_TIMEOUT = settings.llm.blog_timeout
-
-
-def _parse_json_list(raw):
-    if not raw:
-        return []
-    if isinstance(raw, list):
-        return raw
-    try:
-        v = json.loads(raw)
-        return v if isinstance(v, list) else []
-    except (ValueError, TypeError):
-        return []
 
 
 def fetch_recent_reports(days: int, theme: str | None = None) -> list[dict]:
