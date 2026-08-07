@@ -90,3 +90,10 @@ class WrapperEventLogContractTests(unittest.TestCase):
                 self.assertIn('EVENT_LOG_ARGS=(--event-log "${PIPELINE_EVENT_LOG}")', text)
                 self.assertIn('"${EVENT_LOG_ARGS[@]}"', text)
                 self.assertIn('exit "${EXIT_CODE}"', text)
+
+    def test_daily_wrapper_uses_package_module_import_path(self):
+        root = Path(__file__).resolve().parent.parent
+        text = (root / "run_morning_report.sh").read_text(encoding="utf-8")
+
+        self.assertIn("python -m src.report_generator", text)
+        self.assertNotIn("python src/report_generator.py", text)

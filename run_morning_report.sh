@@ -2,7 +2,7 @@
 # ===========================================================================
 # Morning Macro Report Agent Cron Scheduler Script
 # ===========================================================================
-# Auto-activates python virtualenv and runs report_generator.py.
+# Auto-activates python virtualenv and runs report_generator as a package module.
 # Append execution logs to morning_report_cron.log.
 
 # Include NodeJS in PATH for NVM compatibility in cron/background jobs
@@ -31,7 +31,7 @@ EVENT_LOG_ARGS=()
 if [[ -n "${PIPELINE_EVENT_LOG:-}" ]]; then
     EVENT_LOG_ARGS=(--event-log "${PIPELINE_EVENT_LOG}")
 fi
-python src/report_generator.py "${EVENT_LOG_ARGS[@]}" "$@" >> "${LOG_FILE}" 2>&1
+python -m src.report_generator "${EVENT_LOG_ARGS[@]}" "$@" >> "${LOG_FILE}" 2>&1
 
 EXIT_CODE=$?
 

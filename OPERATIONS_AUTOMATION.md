@@ -16,6 +16,9 @@ runs a missed calendar event when the WSL distribution next starts.
 | `macro-narrative-report.timer` | Wednesday/Sunday 06:00 | Narrative report |
 | `macro-watchdog.timer` | every 15 minutes | Timer and journal health |
 
+The Daily wrapper uses `python -m src.report_generator` so package imports remain valid
+inside the minimal systemd environment.
+
 The units are versioned under `deploy/systemd/user/` and installed in
 `~/.config/systemd/user/`. Journal-aware wrappers write to
 `logs/pipeline-events.jsonl`. Wrapper failures propagate to systemd; report content,
