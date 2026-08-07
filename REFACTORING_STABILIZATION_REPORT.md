@@ -76,3 +76,10 @@ Stage 19의 report lifecycle 계약을 Daily, CIO, Insight, Narrative 실제 진
 모든 연결은 `--event-log`를 지정할 때만 활성화되며 기존 리포트 생성·저장·메일 순서와
 각 진입점의 예외 정책을 보존한다. journal에는 파이프라인 이름, 상태, 종료 stage와
 예외 형식만 기록하고 생성 본문이나 예외 메시지는 기록하지 않는다.
+
+## Stage 21 result
+
+다섯 운영 래퍼에 `PIPELINE_EVENT_LOG` opt-in 전달을 추가하고 schema v1 journal을 읽기만
+하는 실행 요약 CLI를 제공했다. 환경변수가 비어 있으면 기존 자동화 명령은 journal 인자를
+추가하지 않는다. 요약기는 실행별 상태와 집계만 표시하며 파일 부재·손상 줄을 명시적 종료
+코드로 구분하고 유효한 나머지 기록은 계속 처리한다.

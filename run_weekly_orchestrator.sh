@@ -44,7 +44,11 @@ source .venv/bin/activate
 # 👑 python -m src.orchestrator — 루트 기준 모듈 실행(sys.path[0]=루트).
 # 직접 python src/orchestrator.py 시 sys.path[0]=src/ 가 되어
 # `from src import mcp_server` 가 ModuleNotFoundError 발생.
-python -m src.orchestrator >> "${LOG_FILE}" 2>&1
+EVENT_LOG_ARGS=()
+if [[ -n "${PIPELINE_EVENT_LOG:-}" ]]; then
+    EVENT_LOG_ARGS=(--event-log "${PIPELINE_EVENT_LOG}")
+fi
+python -m src.orchestrator "${EVENT_LOG_ARGS[@]}" >> "${LOG_FILE}" 2>&1
 
 EXIT_CODE=$?
 

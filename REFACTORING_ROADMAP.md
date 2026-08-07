@@ -235,3 +235,13 @@ orchestration으로 정리하되 파일 경로와 실행 순서를 characterizat
 - 예외 메시지와 report 본문은 journal에 넣지 않고 예외 형식만 기록한다.
 - sink 중단은 report 성공 여부에 영향을 주지 않으며, Insight/Narrative의 예외 전파와
   CIO의 경고 후 반환 정책을 그대로 유지했다.
+
+## 여섯 번째 구현 파동 3차 결과
+
+- 다섯 운영 래퍼가 `PIPELINE_EVENT_LOG`이 설정된 경우에만 journal CLI 인자를 전달한다.
+  비어 있으면 기존 실행 명령과 출력 redirect를 유지한다.
+- `scripts/summarize_run_events.py`가 schema v1 journal을 read-only로 읽어 실행별 최신 상태,
+  report 종류, video 진행 수와 성공·스킵·실패 집계를 출력한다.
+- 실행 요약은 최신순·개수 제한·JSON 출력을 지원하고, 파일 부재와 손상 줄을 서로 다른
+  종료 코드로 구분한다.
+- 손상 또는 알 수 없는 schema 줄은 격리하고 나머지 실행 이력은 계속 요약한다.

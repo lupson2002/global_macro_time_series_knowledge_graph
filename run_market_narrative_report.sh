@@ -55,7 +55,11 @@ fi
 source .venv/bin/activate
 # 전체(내러티브 추론 + 저장 + Obsidian Sync + 메일 발송).
 # --no-send 를 원하면 아래에 추가 (메일만 제외).
-python scripts/insights/run_market_narrative.py >> "${LOG_FILE}" 2>&1
+EVENT_LOG_ARGS=()
+if [[ -n "${PIPELINE_EVENT_LOG:-}" ]]; then
+    EVENT_LOG_ARGS=(--event-log "${PIPELINE_EVENT_LOG}")
+fi
+python scripts/insights/run_market_narrative.py "${EVENT_LOG_ARGS[@]}" >> "${LOG_FILE}" 2>&1
 
 EXIT_CODE=$?
 

@@ -7,6 +7,7 @@ Wave 1 characterization tests preserve the production baseline before structural
 ```bash
 .venv/bin/python -m unittest discover -s tests -v
 .venv/bin/python -m compileall -q main.py src scripts publish_all_blogs.py tests
+bash -n run_frequent.sh run_morning_report.sh run_insight_report.sh run_weekly_orchestrator.sh run_market_narrative_report.sh
 ```
 
 The suite uses temporary directories and mocks. It does not require network access, API keys, cookies, the production SQLite database, the production Obsidian vault, or the production LanceDB index.
@@ -28,6 +29,7 @@ The suite uses temporary directories and mocks. It does not require network acce
 - `test_main_cli.py`: CLI defaults, target ordering/deduplication, tier selection, backfill ID handling, delay sequencing, exit status, and opt-in lifecycle event order.
 - `test_run_events.py`: stable run/video/report JSON schema, UTF-8 JSONL append, disabled no-op, and fail-open sink policy.
 - `test_report_cli_events.py`: Daily/CIO/Insight/Narrative opt-in lifecycle order, shared run ID, failure stage, and preserved CIO exception policy.
+- `test_event_summary.py`: malformed-line isolation, newest-first run aggregation, read-only CLI exit codes, and opt-in wrapper argument wiring.
 - `test_domain.py`: read-only schema sections, malformed-section isolation, list copy safety, and canonical vector projection.
 - `test_projections.py`: canonical LanceDB projection and explicit false-upsert failure.
 - `test_reconciliation.py`: drift planning, read-only audit, explicit apply guard, backup integrity, missing-only repair, and batched vector repair ordering.

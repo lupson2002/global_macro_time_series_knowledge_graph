@@ -41,7 +41,11 @@ fi
 
 # Activate virtualenv and run orchestrator in RSS mode
 source .venv/bin/activate
-python main.py --fetch_latest --max_age_hours 36 >> "${LOG_FILE}" 2>&1
+EVENT_LOG_ARGS=()
+if [[ -n "${PIPELINE_EVENT_LOG:-}" ]]; then
+    EVENT_LOG_ARGS=(--event-log "${PIPELINE_EVENT_LOG}")
+fi
+python main.py --fetch_latest --max_age_hours 36 "${EVENT_LOG_ARGS[@]}" >> "${LOG_FILE}" 2>&1
 
 EXIT_CODE=$?
 

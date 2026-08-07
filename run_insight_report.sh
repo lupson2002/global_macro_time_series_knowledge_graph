@@ -49,7 +49,11 @@ fi
 
 source .venv/bin/activate
 # scripts/insight_report.py — 전체(크로스매트릭스+지식그래프+RAG 인사이트) + 메일 발송.
-python scripts/insight_report.py >> "${LOG_FILE}" 2>&1
+EVENT_LOG_ARGS=()
+if [[ -n "${PIPELINE_EVENT_LOG:-}" ]]; then
+    EVENT_LOG_ARGS=(--event-log "${PIPELINE_EVENT_LOG}")
+fi
+python scripts/insight_report.py "${EVENT_LOG_ARGS[@]}" >> "${LOG_FILE}" 2>&1
 
 EXIT_CODE=$?
 

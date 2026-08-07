@@ -108,7 +108,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--tiers", default="all",
                         help="[Ver 3.1] Comma-separated tier names to include (e.g. 'tier_1_highest_density,tier_3_macro_independent') or 'all'. Default 'all'.")
     parser.add_argument(
-        "--event_log",
+        "--event-log", "--event_log", dest="event_log",
         help="Append opt-in run/video lifecycle events to this JSONL file",
     )
     return parser

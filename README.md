@@ -160,6 +160,22 @@ Daily, CIO, Insight, Narrative도 같은 파일에 `run.started`, `report.starte
 `report.finished`, `run.finished`를 추가할 수 있습니다. `report`에는 파이프라인 이름이,
 `stage`에는 aggregation/generation/storage/delivery 중 실제 종료 지점이 기록됩니다.
 
+운영 래퍼에서는 `PIPELINE_EVENT_LOG` 환경변수로 한 번에 활성화할 수 있습니다. 비어 있거나
+정의되지 않으면 기존 명령과 동일하게 journal 인자를 전달하지 않습니다.
+
+```bash
+export PIPELINE_EVENT_LOG=logs/pipeline-events.jsonl
+./run_frequent.sh
+./run_morning_report.sh
+
+# 최신 20개 실행 요약(기본 경로는 환경변수, 미설정 시 logs/pipeline-events.jsonl)
+python scripts/summarize_run_events.py
+python scripts/summarize_run_events.py --limit 50 --json
+```
+
+요약 명령은 journal을 읽기만 합니다. 파일 부재는 종료 코드 1, 일부 손상되거나 알 수 없는
+schema 줄이 있으면 유효한 실행은 출력하면서 종료 코드 2와 `malformed_lines`를 반환합니다.
+
 ## 자동화 랩퍼
 
 - `run_frequent.sh`: 6시간 수집용
@@ -171,6 +187,8 @@ Daily, CIO, Insight, Narrative도 같은 파일에 `run.started`, `report.starte
 - `run_batch_backfill.sh`: chunked reprocessing
 
 스크립트의 일정 주석은 권장 설정입니다. 실제 설치 상태는 `crontab -l`/`systemctl list-timers`로 별도 확인해야 합니다.
+cron에서는 명령 앞에 `PIPELINE_EVENT_LOG=logs/pipeline-events.jsonl`을 붙이고, systemd에서는
+동일 이름의 `Environment=` 또는 `EnvironmentFile=` 항목을 사용하면 됩니다.
 
 ## 환경변수
 

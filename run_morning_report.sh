@@ -27,7 +27,11 @@ fi
 
 # Activate virtualenv and run report generator
 source .venv/bin/activate
-python src/report_generator.py "$@" >> "${LOG_FILE}" 2>&1
+EVENT_LOG_ARGS=()
+if [[ -n "${PIPELINE_EVENT_LOG:-}" ]]; then
+    EVENT_LOG_ARGS=(--event-log "${PIPELINE_EVENT_LOG}")
+fi
+python src/report_generator.py "${EVENT_LOG_ARGS[@]}" "$@" >> "${LOG_FILE}" 2>&1
 
 EXIT_CODE=$?
 
