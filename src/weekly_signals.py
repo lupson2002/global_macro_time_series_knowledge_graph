@@ -53,22 +53,25 @@ def _balanced_summary(rows: list[sqlite3.Row], asset: str | None = None) -> dict
     if not observations:
         return {
             "stance": None, "dispersion": None, "agreement": None,
-            "tail_risk_ratio": 0.0, "views": 0, "speakers": 0, "channels": 0,
+            "tail_risk_ratio": 0.0, "contrarian_pct": 0,
+            "views": 0, "speakers": 0, "channels": 0,
         }
 
-    by_speaker: dict[tuple[str, str], list[tuple[float, float, bool]]] = defaultdict(list)
+    by_speaker: dict[tuple[str, str], list[tuple[float, float, bool, bool]]] = defaultdict(list)
     for (_, channel, speaker), values in observations.items():
         by_speaker[(channel, speaker)].append(values)
 
-    speaker_scores: dict[str, list[tuple[float, float, bool]]] = defaultdict(list)
+    speaker_scores: dict[str, list[tuple[float, float, bool, bool]]] = defaultdict(list)
     for (channel, _speaker), values in by_speaker.items():
         score = sum(v[0] for v in values) / len(values)
         conviction = sum(v[1] for v in values) / len(values)
         tail = any(v[0] <= 4 and v[1] >= 8 for v in values)
-        speaker_scores[channel].append((score, conviction, tail))
+        contrarian = any(v[2] for v in values)
+        speaker_scores[channel].append((score, conviction, tail, contrarian))
 
     channel_scores = []
     tail_channels = 0
+    channel_contrarian_rates: list[float] = []
     for values in speaker_scores.values():
         # sqrt conviction retains information without allowing a single emphatic view to dominate.
         weights = [math.sqrt(max(1.0, v[1])) for v in values]
@@ -76,15 +79,18 @@ def _balanced_summary(rows: list[sqlite3.Row], asset: str | None = None) -> dict
         channel_scores.append(score)
         if any(v[2] for v in values):
             tail_channels += 1
+        channel_contrarian_rates.append(sum(1 for v in values if v[3]) / len(values))
 
     mean = sum(channel_scores) / len(channel_scores)
     variance = sum((value - mean) ** 2 for value in channel_scores) / len(channel_scores)
     std = math.sqrt(variance)
+    contrarian_pct = round(100.0 * sum(channel_contrarian_rates) / len(channel_contrarian_rates))
     return {
         "stance": round((mean - 1.0) / 9.0 * 100),
         "dispersion": round(std, 2),
         "agreement": round(max(0.0, min(100.0, 100.0 * (1.0 - std / 4.5)))),
         "tail_risk_ratio": round(tail_channels / len(channel_scores), 3),
+        "contrarian_pct": contrarian_pct,
         "views": len(observations),
         "speakers": len(by_speaker),
         "channels": len(channel_scores),

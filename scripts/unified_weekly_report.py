@@ -37,6 +37,11 @@ WEEKLY_SYSTEM_PROMPT = """당신은 투자위원회용 주간 리서치 편집�
 - 근거가 부족하면 '근거 부족'이라고 쓰세요.
 - 짧고 직접적인 한국어로 작성하세요.
 
+백링크 규칙:
+- 화자명, 자산군, 티커, 거시 테마명은 [[ ]] 백링크로 감싸세요 (예: [[미국 대형주]], [[제롬 파월]], [[인플레이션]]).
+- 일반 명사, 형용사, 동사, 조사는 백링크로 감싸지 마세요 (예: [[주식]], [[상승]], [[보고서]] 금지).
+- 같은 표현이 문단 내 반복될 때는 첫 번째만 백링크하고 나머지는 일반 텍스트로 두세요.
+
 정확히 다음 구조로 작성하세요:
 # 주간 투자정보 통합 보고서 ({date})
 > **한 줄 결론:** 한 문장
@@ -52,11 +57,20 @@ WEEKLY_SYSTEM_PROMPT = """당신은 투자위원회용 주간 리서치 편집�
 - 지배적 내러티브의 반대 증거를 반드시 포함
 
 ## 3. Scenario & Portfolio Implications
-| 시나리오 | 입력에 존재하는 발동 조건 | 수혜 | 피해 | 대응 방향 | 무효화 |
-|---|---|---|---|---|---|
+| 시나리오 | 시점 | 입력에 존재하는 발동 조건 | 수혜 | 피해 | 대응 방향 | 무효화 |
+|---|---|---|---|---|---|---|
+시점 컬럼은 이번 주 / 1-3개월 / 3-6개월 중 하나만 선택.
 기본/상방/하방 시나리오 각 1개. 임의 확률 금지.
 
-## 4. Disagreement & Asymmetry
+## 4. 전략적 틸트
+| 자산군 | 방향 | 강도 | 근거 |
+|---|---|---|---|
+방향: 확대 / 유지 / 축소 / 헤지 중 하나. 퍼센트 금지.
+강도: 경미 / 보통 / 강력 중 하나.
+근거: [통계] 또는 [발언: 화자/채널] 태그 필수.
+입력 신호 보드의 자산군만 사용. 근거 부족 시 '근거 부족' 명시.
+
+## 5. Disagreement & Asymmetry
 - 가장 중요한 의견 차이와 양측 근거
 - 어느 쪽이 맞는지 단정하지 말고 다음 확인 이벤트 제시
 """
@@ -70,21 +84,23 @@ def _change(value) -> str:
 
 def render_signal_board(snapshot: dict) -> str:
     lines = [
-        "## 5. Cross-Asset Signal Board",
+        "## 6. Cross-Asset Signal Board",
         "",
         "> 채널별·화자별 반복을 먼저 평균한 뒤 채널을 동일 가중했습니다. 전주 변화가 핵심이며 수치는 수익률 예측이 아닙니다.",
         "",
-        "| 자산 | 스탠스 | 전주 변화 | 합의도 | 독립 화자 | 채널 | 테일리스크 |",
-        "|---|---:|---:|---:|---:|---:|---:|",
+        "| 자산 | 스탠스 | 전주 변화 | 합의도 | 분산 | 역설비 | 독립 화자 | 채널 | 테일리스크 |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
+    rows = 0
     for item in snapshot.get("assets", [])[:15]:
+        rows += 1
         lines.append(
-            f"| {item['asset']} | {item['stance']}/100 | {_change(item.get('delta'))} "
-            f"| {item['agreement']}% | {item['speakers']} | {item['channels']} "
-            f"| {item['tail_risk_ratio'] * 100:.0f}% |"
+            f"| [[{item['asset']}]] | {item['stance']}/100 | {_change(item.get('delta'))} "
+            f"| {item['agreement']}% | {item['dispersion']} | {item['contrarian_pct']}% "
+            f"| {item['speakers']} | {item['channels']} | {item['tail_risk_ratio'] * 100:.0f}% |"
         )
-    if len(lines) == 5:
-        lines.append("| 데이터 부족 | - | - | - | - | - | - |")
+    if rows == 0:
+        lines.append("| 데이터 부족 | - | - | - | - | - | - | - | - |")
     return "\n".join(lines)
 
 
@@ -96,8 +112,8 @@ def render_evidence_appendix(snapshot: dict, rag_context: str) -> str:
         f"- 분석 기간: {snapshot['windows']['current'][0]} ~ {snapshot['windows']['current'][1]}",
         f"- 비교 기간: {snapshot['windows']['previous'][0]} ~ {snapshot['windows']['previous'][1]}",
         f"- 전체 스탠스: {overall['stance']}/100 ({_change(overall.get('delta'))})",
-        f"- 합의도: {overall['agreement']}% · 독립 화자 {overall['speakers']} · 채널 {overall['channels']}",
-        f"- 채널 기준 테일리스크: {overall['tail_risk_ratio'] * 100:.0f}%",
+        f"- 합의도: {overall['agreement']}% · 분산: {overall['dispersion']} · 역설비: {overall['contrarian_pct']}%",
+        f"- 독립 화자 {overall['speakers']} · 채널 {overall['channels']} · 채널 기준 테일리스크: {overall['tail_risk_ratio'] * 100:.0f}%",
         "",
         "### 내러티브 변화 속도",
         "",
@@ -107,7 +123,7 @@ def render_evidence_appendix(snapshot: dict, rag_context: str) -> str:
     for item in snapshot.get("narrative_velocity", []):
         velocity = "신규" if item["velocity"] is None else f"{item['velocity']:.2f}x"
         lines.append(
-            f"| {item['node']} | {item['count_7d']} | {item['count_prior_23d']} "
+            f"| [[{item['node']}]] | {item['count_7d']} | {item['count_prior_23d']} "
             f"| {velocity} | {'예' if item['new'] else '아니오'} |"
         )
     lines.extend([
