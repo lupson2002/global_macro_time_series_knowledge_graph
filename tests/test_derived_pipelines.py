@@ -24,15 +24,25 @@ class DailyReportContractTests(unittest.TestCase):
         self.assertEqual(file_body, "yaml\nbodyevidencesummary")
         self.assertEqual(email_body, "bodyevidencesummary")
 
-    def test_sentiment_weighting_tail_deduction_and_regime(self):
+    def test_wordcloud_is_between_core_report_and_evidence(self):
+        file_body, email_body = _assemble_daily_outputs(
+            "yaml\n", "brief", "evidence", "appendix", wordcloud="wordcloud",
+        )
+        self.assertEqual(email_body, "briefwordcloudevidenceappendix")
+        self.assertEqual(file_body, "yaml\n" + email_body)
+
+    def test_sentiment_separates_direction_agreement_and_tail_risk(self):
         result = calculate_deterministic_sentiment([
             {"bull_bear_score": 8, "conviction_score": 2},
             {"bull_bear_score": 2, "conviction_score": 8},
         ])
         self.assertEqual(result, {
-            "sample_count": 2, "raw_weighted_avg": 3.2, "stddev": 4.24,
-            "tail_risk_count": 1, "deduction": 1.5, "adjusted_score": 1.7,
-            "sentiment_regime": "Extreme Panic / Cash Focus",
+            "sample_count": 2, "raw_weighted_avg": 4.0, "stddev": 2.83,
+            "tail_risk_count": 1, "tail_risk_ratio": 0.5,
+            "tail_risk_label": "높음", "deduction": 0.0,
+            "adjusted_score": 4.0, "stance_score": 33,
+            "agreement_score": 37, "confidence_label": "낮음",
+            "sentiment_regime": "Defensive Risk-Off",
         })
 
     def test_sentiment_ignores_invalid_rows_and_keeps_empty_neutral(self):

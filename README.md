@@ -51,7 +51,8 @@ SQLite `data/macro_knowledge.db`:
 - `nodes`: macro theme, asset class, ticker
 - `quant_signals`: 점수·기간·매크로 신호
 - `skipped_videos`: 비매크로 영상 멱등성 스킵
-- `daily_sentiment`: 일일 결정론적 심리 집계
+- `daily_sentiment`: 일일 결정론적 방향 점수 집계. 보고서에는 0~100 스탠스와
+  전일 변화·합의도·신뢰도·테일리스크를 분리해 표시
 
 SQLite가 정형 원본이며 Obsidian과 LanceDB는 재생성 가능한 파생 저장소입니다.
 
@@ -73,8 +74,10 @@ SQLite가 정형 원본이며 Obsidian과 LanceDB는 재생성 가능한 파생 
 | `src/lancedb_store.py` | LanceDB upsert, hybrid search, SQLite backfill |
 | `src/reconciliation.py` | SQLite 기준 파생 저장소 감사·누락 복구·시점 백업 |
 | `src/mcp_server.py` | SQLite 기반 read-only MCP 8 tools |
-| `src/report_generator.py` | 24시간 Daily report, 번역, 근거, 심리, 이메일 |
-| `src/orchestrator.py` | CIO 전략 보고서·시각화·이메일 |
+| `src/report_generator.py` | Executive Brief형 24시간 Daily report, 번역, 근거, 다차원 심리, 이메일 |
+| `src/orchestrator.py` | 레거시 CIO 전략 리포트(통합 리포트로 대체, 파일 보존) |
+| `src/weekly_signals.py` | 결정론적 채널·화자 밸런스 신호, 주간 스냅샷·변화 감지 |
+| `scripts/unified_weekly_report.py` | Executive Brief형 주간 통합 투자인텔리전스 리포트 |
 | `src/insights/` | 크로스 매트릭스, 지식 그래프, RAG, timebox |
 | `scripts/insight_report.py` | 주간 인사이트 보고서 |
 | `scripts/insights/market_narrative.py` | RAG + 통계 기반 마켓 내러티브 |
@@ -140,8 +143,8 @@ python scripts/reconcile_storage.py --markdown-only --apply --yes
 # Daily
 python src/report_generator.py --lookback_hours 24 --event-log logs/report-events.jsonl
 
-# CIO: package import 경로를 위해 -m 사용
-python -m src.orchestrator --event-log logs/report-events.jsonl
+# 주간 통합 투자인텔리전스 리포트 (결정론적 신호 + RAG + LLM 합성)
+python scripts/unified_weekly_report.py --event-log logs/report-events.jsonl
 
 # MCP / Telegram
 python -m src.mcp_server
@@ -158,7 +161,7 @@ python scripts/insights/run_market_narrative.py --event-log logs/report-events.j
 기록하지 않습니다. 이벤트 파일 쓰기가 중단되어도 기존 콘솔 출력과 파이프라인 종료 코드는
 유지됩니다.
 
-Daily, CIO, Insight, Narrative도 같은 파일에 `run.started`, `report.started`,
+Daily, 주간 통합, Insight, Narrative도 같은 파일에 `run.started`, `report.started`,
 `report.finished`, `run.finished`를 추가할 수 있습니다. `report`에는 파이프라인 이름이,
 `stage`에는 aggregation/generation/storage/delivery 중 실제 종료 지점이 기록됩니다.
 
@@ -183,7 +186,7 @@ schema 줄이 있으면 유효한 실행은 출력하면서 종료 코드 2와 `
 - `run_frequent.sh`: 6시간 수집용
 - `run_morning_report.sh`: Daily report
 - `run_insight_report.sh`: 주간 Insight report
-- `run_weekly_orchestrator.sh`: CIO report
+- `run_weekly_orchestrator.sh`: 주간 통합 투자인텔리전스 리포트 (구 CIO)
 - `run_market_narrative_report.sh`: Market Narrative report
 - `run_auto_blog.sh`: 08:30 블로그 원고/발행
 - `run_batch_backfill.sh`: chunked reprocessing

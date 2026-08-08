@@ -1,13 +1,17 @@
 #!/bin/bash
 # ===========================================================================
-# Weekly CIO Strategy Report Scheduler (Tier 3 — NIM deepseek-v4-pro)
+# Unified Weekly Investment Intelligence Report Scheduler
+#  (decision-first: deterministic cross-asset signals + RAG 발언 + LLM 합성)
 # ===========================================================================
-# Runs src/orchestrator.py — aggregates full corpus → CIO 페르소나 거시 자산배분
-# 전략 리포트 → obsidian_vault/reports/Grand_Report_YYYY-MM-DD.md 저장.
-# Crontab: 0 8 * * 1 (매주 월요일 08:00 KST — 일일 리포트 07:00 이후 최신 반영)
+# Runs scripts/unified_weekly_report.py — 결정론적 신호(weekly_signals) +
+# 실제 발언 검색(collect_rag_context) → Executive Brief형 주간 통합 리포트 →
+# reports/weekly/weekly_investment_intelligence_YYYY-MM-DD.md 와
+# obsidian_vault/Weekly_Reports/Weekly_Investment_Intelligence_YYYY-MM-DD.md 저장.
+# Crontab: 0 8 * * 1 (매주 월요일 08:00 KST — 일일 리포트 07:00 이후 최신 반영).
 #
+# 기존 src/orchestrator.py(Grand CIO)는 통합 리포트로 대체됐고 파일은 보존됨.
 # 의존: nvidia-api-proxy(pm2 nvidia-proxy, 6-key NIM rotation) 가동.
-# env 오버라이드: TIER3_MODEL(기본 deepseek-ai/deepseek-v4-pro).
+# env 오버라이드: INSIGHT_MODEL(기본 deepseek-ai/deepseek-v4-flash).
 
 # Include NodeJS in PATH for NVM compatibility in cron/background jobs
 export PATH="/home/mikey/.nvm/versions/node/v22.22.2/bin:$PATH"
@@ -41,14 +45,13 @@ if [ ! -d ".venv" ]; then
 fi
 
 source .venv/bin/activate
-# 👑 python -m src.orchestrator — 루트 기준 모듈 실행(sys.path[0]=루트).
-# 직접 python src/orchestrator.py 시 sys.path[0]=src/ 가 되어
-# `from src import mcp_server` 가 ModuleNotFoundError 발생.
+# 📈 python scripts/unified_weekly_report.py — 결정론적 신호 + RAG + LLM 주간 통합 리포트.
+# 스크립트가 PROJECT_ROOT를 sys.path에 추가하므로 루트에서 직접 실행 가능.
 EVENT_LOG_ARGS=()
 if [[ -n "${PIPELINE_EVENT_LOG:-}" ]]; then
     EVENT_LOG_ARGS=(--event-log "${PIPELINE_EVENT_LOG}")
 fi
-python -m src.orchestrator "${EVENT_LOG_ARGS[@]}" >> "${LOG_FILE}" 2>&1
+python scripts/unified_weekly_report.py "${EVENT_LOG_ARGS[@]}" >> "${LOG_FILE}" 2>&1
 
 EXIT_CODE=$?
 

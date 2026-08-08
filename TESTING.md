@@ -19,7 +19,7 @@ The suite uses temporary directories and mocks. It does not require network acce
 - `test_local_llm_client.py`: full single-shot delivery for a transcript larger than the former truncation threshold.
 - `test_llm_response.py`: response stage ordering, trusted overrides, one recovery limit, and soft validation.
 - `test_pipeline_contracts.py`: macro relevance rules, skipped-video idempotency, channel tier filtering.
-- `test_derived_pipelines.py`: Daily sentiment, CIO evidence/table rendering, Telegram dispatch/chunking, Insight headline/node contracts.
+- `test_derived_pipelines.py`: Daily Executive Brief 조립 순서와 다차원 sentiment, CIO evidence/table rendering, Telegram dispatch/chunking, Insight headline/node contracts.
 - `test_json_utils.py`: malformed/non-array JSON fallback and explicit native-list compatibility mode.
 - `test_email_delivery.py`: plain/HTML MIME shape, attachment filtering, SMTP options, and pipeline-specific fallback policies.
 - `test_report_rendering.py`: exact frontmatter envelope, Daily metadata snapshot, table-cell escaping, and Gmail HTML styling.

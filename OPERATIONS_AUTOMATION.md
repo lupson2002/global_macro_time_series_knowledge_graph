@@ -12,7 +12,7 @@ runs a missed calendar event when the WSL distribution next starts.
 | `macro-daily-report.timer` | daily 07:00 | Daily report |
 | `macro-auto-blog.timer` | daily 08:30 | Blog workflow |
 | `macro-insight-report.timer` | Friday 05:00 | Insight report |
-| `macro-cio-report.timer` | Monday 08:00 | CIO report |
+| `macro-cio-report.timer` | Monday 08:00 | 주간 통합 투자인텔리전스 리포트 (구 CIO) |
 | `macro-narrative-report.timer` | Wednesday/Sunday 06:00 | Narrative report |
 | `macro-watchdog.timer` | every 15 minutes | Timer and journal health |
 

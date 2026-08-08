@@ -44,6 +44,25 @@ def narrative_artifacts(
     )
 
 
+def weekly_artifacts(
+    project_root: str | Path,
+    vault_dir: str | Path,
+    date: str,
+    report_content: str,
+    vault_content: str,
+) -> tuple[ReportArtifact, ReportArtifact]:
+    return (
+        ReportArtifact(
+            Path(project_root) / "reports" / "weekly" / f"weekly_investment_intelligence_{date}.md",
+            report_content,
+        ),
+        ReportArtifact(
+            Path(vault_dir) / "Weekly_Reports" / f"Weekly_Investment_Intelligence_{date}.md",
+            vault_content,
+        ),
+    )
+
+
 def write_report_artifact(artifact: ReportArtifact) -> Path:
     artifact.path.parent.mkdir(parents=True, exist_ok=True)
     artifact.path.write_text(artifact.content, encoding="utf-8")

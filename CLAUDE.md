@@ -2,7 +2,7 @@
 
 Stack: Python 3.12 / SQLite / Obsidian Markdown / LanceDB / FastMCP
 Architecture: batch/CLI monolith with external LLM, embedding, email, Telegram and browser-publishing services
-Entry: `main.py`; reports via `src/report_generator.py`, `python -m src.orchestrator`, `scripts/insight_report.py`
+Entry: `main.py`; reports via `src/report_generator.py`, `scripts/unified_weekly_report.py` (구 CIO `src/orchestrator.py`는 보존), `scripts/insight_report.py`
 Tests: stdlib unittest tests in `tests/`; run `.venv/bin/python -m unittest discover -s tests -v`
 Compile: `.venv/bin/python -m compileall -q main.py src scripts publish_all_blogs.py`
 
@@ -32,7 +32,7 @@ Compile: `.venv/bin/python -m compileall -q main.py src scripts publish_all_blog
 - Channels: Tier 1 = 6 enabled; Tier 2 = 5 enabled; Tier 3 = 30 disabled; Tier 4 = 29 disabled.
 - Vector store: LanceDB. TurboVec files/server are retired and must not be referenced as active.
 - Telegram exposes SQLite 8 tools plus LanceDB 2 tools in-process.
-- Run CIO as `python -m src.orchestrator`, not `python src/orchestrator.py`.
+- 주간 자동화는 `python scripts/unified_weekly_report.py`(run_weekly_orchestrator.sh)를 사용. 구 CIO `python -m src.orchestrator`는 레거시 보존.
 
 ## Refactoring safety
 - Preserve user changes: the worktree may contain substantial uncommitted production changes.

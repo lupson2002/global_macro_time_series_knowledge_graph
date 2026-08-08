@@ -119,9 +119,9 @@ TurboVec server와 `.tvim` 인덱스는 현재 아키텍처에 존재하지 않�
 
 | Pipeline | Input | Output |
 |---|---|---|
-| Daily | 최근 24h SQLite reports | `obsidian_vault/Daily_Reports`, wordcloud, email |
+| Daily | 최근 24h SQLite reports | `obsidian_vault/Daily_Reports`, Executive Brief, wordcloud, email |
 | Weekly Insight | matrices + graph + LanceDB RAG | `reports/insights`, HTML visuals, email |
-| CIO | MCP aggregate context | `obsidian_vault/reports`, visuals, email |
+| Weekly Unified | 결정론적 신호(weekly_signals) + RAG 발언 | `reports/weekly`, `obsidian_vault/Weekly_Reports`, email |
 | Market Narrative | SQLite statistics + six RAG queries | `reports/narrative`, `Narrative_Reports`, email |
 | Blog | recent reports + latest Daily | `tistory_draft.md`, archive, browser publishing |
 | Telegram | SQLite 8 tools + LanceDB 2 tools | Telegram answer/tool loop |

@@ -12,6 +12,7 @@ import sys
 import json
 import sqlite3
 import datetime
+import math
 import time
 from pathlib import Path
 import re as _re
@@ -174,27 +175,20 @@ SYSTEM_INSTRUCTION = """
 
 # 📊 일일 매크로 종합 (YYYY-MM-DD KST)
 
-> **🌐 Macro Pulse & Narrative Tracker**
-> • 시장 심리 온도: {adjusted_score}/10 ({regime_name})
-> • 시장 매크로 레짐(Regime): {regime_name}
-> • 오늘의 내러티브 요약: (2-3줄 흐름 — 핵심 테마 + 하방/상방 압력)
+> **오늘의 한 줄 결론:** (오늘의 시장 방향·핵심 원인·제약 요인을 담아 한국어 한 문장, 120자 이내)
 
-**종합 심리 지수**: {adjusted_score}/10 ({regime_name})
-*(수집 {sample_count}건 가중평균 {raw_weighted_avg}점, 테일리스크 하향보정 {deduction}점 반영)*
+## 핵심 브리프
+- **시장 방향:** (현재 방향과 전일 대비 의미를 한 문장)
+- **핵심 촉매:** (가장 강한 상방 또는 변화 촉매를 한 문장)
+- **최대 리스크:** (가장 중요한 하방 위험과 확인 조건을 한 문장)
 
-[HYBRID SENTIMENT SCORING RULES]
-Calculated Raw Weighted Average: {raw_weighted_avg} / 10 (Sample Count: {sample_count})
-High-Conviction Tail-Risk Warnings: {tail_risk_count} count(s)
+> **시장 스탠스 {stance_score}/100** · 전일 대비 {daily_change} · **{regime_name}**
+> 합의도 {agreement_score}% · 신뢰도 {confidence_label} · 테일리스크 {tail_risk_label} ({tail_risk_count}/{sample_count})
 
-1. TAIL-RISK DEDUCTION:
-   - If tail_risk_count >= 1, deduct 1.5 points per warning from the Raw Average for the final adjusted score (Markets fall faster than they rise).
-
-2. REGIME CLASSIFICATION BASED ON FINAL ADJUSTED SCORE:
-   - 1.0 - 2.5: Extreme Panic / Cash Focus
-   - 2.6 - 4.5: Defensive Risk-Off
-   - 4.6 - 5.5: Neutral / Wait-and-See
-   - 5.6 - 7.5: Selective Quality Buy
-   - 7.6 - 10.0: Aggressive Risk-On
+## 오늘의 투자 시사점
+- **선호:** (현재 데이터가 상대적으로 지지하는 자산·테마와 이유)
+- **경계:** (피하거나 헤지가 필요한 자산·노출과 이유)
+- **관찰:** (향후 방향을 바꿀 구체적 지표·임계값·이벤트)
 
 ## 1. 테마별 내러티브 지형도 (Thematic Consensus)
 | 핵심 테마 / 자산군 | 내러티브 강도 | 시장의 지배적 뷰 & 핵심 근거 | 핵심 변수 및 서포트 구루 |
@@ -222,10 +216,17 @@ High-Conviction Tail-Risk Warnings: {tail_risk_count} count(s)
 ---
 *백링크 규칙: 화자·자산군·티커·핵심 테마만 [[ ]]. 일반 단어 금지.*
 
-【주의】위 4개 섹션까지만 작성. 이어지는 "## 5. 핵심 근거 & 직접 인용 (Evidence & Quotes)" 및
-"## 6. 24시간 수집 요약 (24h Collected Views)" 섹션은 시스템이 입력 데이터 원문에서
-결정론적으로 자동 부착하므로, 당신은 섹션 5·6을 작성하지 마시오.
+【주의】Executive Brief와 위 4개 번호 섹션까지만 작성. 이어지는 워드클라우드,
+"## 5. 핵심 근거 & 직접 인용 (Evidence & Quotes)" 및
+"## 부록 A. 24시간 전체 수집 관점 (24h Collected Views)"은 시스템이 입력 데이터 원문에서
+결정론적으로 자동 부착하므로, 당신은 섹션 5와 부록을 작성하지 마시오.
 대신 섹션 1-4에서 인용하는 구루명은 입력의 `[[구루명]]` 표기와 정확히 일치시켜 자동 부록과 매칭되게 하시오.
+
+【Executive Brief 품질 게이트】
+- 한 줄 결론은 하나의 문장만 작성하고 제목 다음에 즉시 배치한다.
+- 핵심 브리프는 정확히 3개 불릿만 작성한다. 같은 사실을 표현만 바꿔 반복하지 않는다.
+- 투자 시사점은 정확히 3개 불릿(선호·경계·관찰)만 작성한다.
+- 제공된 심리 수치는 그대로 사용하고 재계산하거나 과장하지 않는다.
 """
 
 def fetch_past_24h_data(db_path: str, lookback_hours: int = 24) -> list:
@@ -392,10 +393,11 @@ def _build_frontmatter(today_str: str, model: str, source_count: int, kst_iso: s
 
 
 def _assemble_daily_outputs(
-    frontmatter: str, report_body: str, evidence: str, summary: str,
+    frontmatter: str, report_body: str, evidence: str, appendix: str,
+    wordcloud: str = "",
 ) -> tuple[str, str]:
     """Return the file body (with YAML) and email body (without YAML)."""
-    email_body = report_body + evidence + summary
+    email_body = report_body + wordcloud + evidence + appendix
     return frontmatter + email_body, email_body
 
 
@@ -540,8 +542,8 @@ def _build_24h_summary_table(reports: list, tr_map: dict = None) -> str:
 
     lines = [
         "\n---\n",
-        "## 6. 24시간 수집 요약 (24h Collected Views)",
-        "*(지난 24시간 수집된 구루 뷰 전체. **핵심주장은 원문을 한국어로全文 번역** — "
+        "## 부록 A. 24시간 전체 수집 관점 (24h Collected Views)",
+        "*(요약이 아닌 지난 24시간 수집 구루 뷰 전체. **핵심주장은 원문을 한국어로全文 번역** — "
         "요약/절삭 없이 전문 표시. 정렬: 컨트리언→확신도.)*\n",
     ]
     for idx, r in enumerate(rows, 1):
@@ -592,24 +594,24 @@ def _build_24h_summary_table(reports: list, tr_map: dict = None) -> str:
 
 
 def _classify_regime(score: float) -> str:
-    """조정점수 기반 투자 레짐 분류."""
-    if score <= 2.5:
+    """1~10 방향 점수 기반의 대칭적인 투자 레짐 분류."""
+    if score < 3.5:
         return "Extreme Panic / Cash Focus"
-    if score <= 4.5:
+    if score < 4.75:
         return "Defensive Risk-Off"
-    if score <= 5.5:
+    if score < 6.25:
         return "Neutral / Wait-and-See"
-    if score <= 7.5:
+    if score < 7.5:
         return "Selective Quality Buy"
     return "Aggressive Risk-On"
 
 
 def calculate_deterministic_sentiment(reports: list) -> dict:
-    """👑 [Ver 4.9] 24h 수집 quant_signals 로 종합 심리지수 결정론 산출 (LLM 추정 대체).
+    """24h 방향·합의도·신뢰도·테일리스크를 서로 섞지 않고 산출한다.
 
-    - 확신도 가중평균 = Σ(bull_bear × conviction) / Σ(conviction)
-    - 고확신 하방 경고(tail_risk) = bull_bear<=4 AND conviction>=8
-    - 테일리스크 차감 = 1.5 × 경고수 (하한 1.0, 상한 10.0)
+    방향 점수에는 sqrt(conviction) 가중치를 써 확신도 한 항목의 과도한 지배를
+    줄인다. 고확신 약세는 방향 점수에서 고정 차감하지 않고 별도 위험 신호로
+    표시한다. ``adjusted_score``는 기존 DB 스키마와 소비자 호환용 1~10 값이다.
     """
     pairs = []
     for r in reports:
@@ -620,33 +622,58 @@ def calculate_deterministic_sentiment(reports: list) -> dict:
             bb, conv = float(bb), float(conv)
         except (TypeError, ValueError):
             continue
-        if conv > 0:
+        if 1 <= bb <= 10 and 0 < conv <= 10:
             pairs.append((bb, conv))
 
     n = len(pairs)
     if n == 0:
         return {"sample_count": 0, "raw_weighted_avg": None, "stddev": None,
-                "tail_risk_count": 0, "deduction": 0.0, "adjusted_score": None,
+                "tail_risk_count": 0, "tail_risk_ratio": 0.0,
+                "tail_risk_label": "데이터 없음", "deduction": 0.0,
+                "adjusted_score": None, "stance_score": None,
+                "agreement_score": None, "confidence_label": "낮음",
                 "sentiment_regime": "Neutral / Wait-and-See"}
 
-    total_w = sum(conv for _, conv in pairs)
-    raw = sum(bb * conv for bb, conv in pairs) / total_w if total_w else (sum(bb for bb, _ in pairs) / n)
+    weighted = [(bb, math.sqrt(conv)) for bb, conv in pairs]
+    total_w = sum(weight for _, weight in weighted)
+    raw = sum(bb * weight for bb, weight in weighted) / total_w
     raw = max(1.0, min(10.0, raw))
 
-    mean = sum(bb for bb, _ in pairs) / n
-    std = (sum((bb - mean) ** 2 for bb, _ in pairs) / (n - 1)) ** 0.5 if n > 1 else 0.0
+    variance = sum(weight * ((bb - raw) ** 2) for bb, weight in weighted) / total_w
+    std = math.sqrt(variance)
+    agreement = round(max(0.0, min(100.0, 100.0 * (1.0 - std / 4.5))))
 
     tail = sum(1 for bb, conv in pairs if bb <= 4 and conv >= 8)
-    deduction = round(1.5 * tail, 1)
-    adjusted = max(1.0, min(10.0, raw - deduction))
+    tail_ratio = tail / n
+    if tail_ratio >= 0.15:
+        tail_label = "높음"
+    elif tail_ratio >= 0.05:
+        tail_label = "보통"
+    else:
+        tail_label = "낮음"
+
+    if n >= 20 and agreement >= 55:
+        confidence = "높음"
+    elif n >= 8 and agreement >= 35:
+        confidence = "보통"
+    else:
+        confidence = "낮음"
+
+    adjusted = raw
+    stance = round((adjusted - 1.0) / 9.0 * 100)
 
     return {
         "sample_count": n,
         "raw_weighted_avg": round(raw, 2),
         "stddev": round(std, 2),
         "tail_risk_count": tail,
-        "deduction": deduction,
+        "tail_risk_ratio": round(tail_ratio, 3),
+        "tail_risk_label": tail_label,
+        "deduction": 0.0,
         "adjusted_score": round(adjusted, 2),
+        "stance_score": stance,
+        "agreement_score": agreement,
+        "confidence_label": confidence,
         "sentiment_regime": _classify_regime(adjusted),
     }
 
@@ -669,6 +696,38 @@ def _store_daily_sentiment(db_path: str, date_str: str, sent: dict) -> None:
         print(f"[WARN] daily_sentiment 저장 실패: {e}")
 
 
+def _previous_stance_score(db_path: str, date_str: str) -> int | None:
+    """오늘보다 이전인 가장 최근 방향 점수를 0~100으로 변환한다.
+
+    과거 ``adjusted_score``에는 폐기한 고정 테일 차감이 섞여 있으므로 비교하지
+    않고, 보정 전 방향을 담은 ``raw_weighted_avg``를 사용한다.
+    """
+    try:
+        with sqlite3.connect(db_path) as conn:
+            row = conn.execute(
+                """SELECT raw_weighted_avg FROM daily_sentiment
+                   WHERE date < ? AND raw_weighted_avg IS NOT NULL
+                   ORDER BY date DESC LIMIT 1""",
+                (date_str,),
+            ).fetchone()
+        if not row:
+            return None
+        return round((max(1.0, min(10.0, float(row[0]))) - 1.0) / 9.0 * 100)
+    except (sqlite3.Error, TypeError, ValueError) as exc:
+        print(f"[WARN] 전일 심리지수 조회 실패: {exc}")
+        return None
+
+
+def _format_stance_change(current: int | None, previous: int | None) -> str:
+    """사람이 즉시 읽을 수 있는 전일 대비 표기."""
+    if current is None or previous is None:
+        return "비교 데이터 없음"
+    delta = current - previous
+    if delta == 0:
+        return "변화 없음"
+    return f"{delta:+d}p"
+
+
 def generate_morning_report(db_path: str, vault_dir: str, api_key: str = None, lookback_hours: int = 24) -> str:
     # 1. Fetch data
     reports = fetch_past_24h_data(db_path, lookback_hours)
@@ -689,13 +748,17 @@ def generate_morning_report(db_path: str, vault_dir: str, api_key: str = None, l
 
     # 👑 [Ver 4.9] 결정론 심리지수 계산 → DB 영속화 → LLM 프롬프트에 값 주입 (하이브리드)
     sent = calculate_deterministic_sentiment(reports)
+    previous_stance = _previous_stance_score(db_path, today_str)
+    daily_change = _format_stance_change(sent["stance_score"], previous_stance)
     _store_daily_sentiment(db_path, today_str, sent)
     system_msg = SYSTEM_INSTRUCTION.format(
-        adjusted_score=sent["adjusted_score"] if sent["adjusted_score"] is not None else "N/A",
+        stance_score=sent["stance_score"] if sent["stance_score"] is not None else "N/A",
+        daily_change=daily_change,
         regime_name=sent["sentiment_regime"],
         sample_count=sent["sample_count"],
-        raw_weighted_avg=sent["raw_weighted_avg"] if sent["raw_weighted_avg"] is not None else "N/A",
-        deduction=sent["deduction"],
+        agreement_score=sent["agreement_score"] if sent["agreement_score"] is not None else "N/A",
+        confidence_label=sent["confidence_label"],
+        tail_risk_label=sent["tail_risk_label"],
         tail_risk_count=sent["tail_risk_count"],
     )
     prompt = f"Today's Date: {today_str}\n\nHere is the raw input data:\n{feed_text}"
@@ -733,7 +796,7 @@ def generate_morning_report(db_path: str, vault_dir: str, api_key: str = None, l
     section6 = _build_24h_summary_table(reports, tr_map=tr_map)
     frontmatter = _build_frontmatter(today_str, TIER2_MODEL, len(reports), kst_iso)
 
-    # 👑 [Ver 4.9] 일간 워드클라우드 + TOP 키워드 (결정론 부록, 제목 직후 상단 배치)
+    # 일간 워드클라우드 + TOP 키워드: 핵심 분석을 방해하지 않도록 섹션 4 뒤에 배치.
     wc_section = ""
     try:
         _wcg = Path(__file__).resolve().parent.parent / "scripts" / "insights" / "wordcloud_generator.py"
@@ -745,22 +808,23 @@ def generate_morning_report(db_path: str, vault_dir: str, api_key: str = None, l
         wc_table = _wcmod.get_top_keywords_table(days=1, top_k=10, data=wc_data)
         wc_image = _wcmod.generate_wordcloud_image(days=1, data=wc_data) or ""
         if wc_table and "키워드 데이터 없음" not in wc_table:
-            wc_section = "\n---\n\n## 🔤 금일 키워드 워드클라우드\n\n" + wc_table + "\n"
+            wc_section = (
+                "\n---\n\n## 오늘의 담론 분포 (Word Cloud)\n\n"
+                "> 언급 빈도이며 중요도·시장 방향의 순위가 아닙니다.\n\n"
+                + wc_table + "\n"
+            )
             if wc_image:
                 wc_section += f"\n![워드클라우드]({wc_image})\n"
     except Exception as _we:
         print(f"[WARN] 워드클라우드 섹션 실패: {_we}")
 
-    if wc_section:
-        _idx = report_content.find("\n\n")
-        if _idx == -1:
-            _idx = len(report_content)
-        report_body = report_content[:_idx] + "\n" + wc_section + report_content[_idx:]
-    else:
-        report_body = report_content
+    report_body = report_content
 
-    # 파일: frontmatter + 본문 + 섹션5 + 섹션6 / 이메일: 본문 + 섹션5 + 섹션6 (YAML 미노출)
-    file_content, email_body = _assemble_daily_outputs(frontmatter, report_body, section5, section6)
+    # 파일: frontmatter + 핵심본문 + 워드클라우드 + 근거 + 전체부록.
+    # 이메일은 동일한 정보 순서를 유지하되 YAML만 노출하지 않는다.
+    file_content, email_body = _assemble_daily_outputs(
+        frontmatter, report_body, section5, section6, wordcloud=wc_section,
+    )
 
     # 5. Export to Obsidian
     report_file_path = write_report_artifact(daily_artifact(vault_dir, today_str, file_content))
