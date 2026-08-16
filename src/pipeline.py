@@ -8,7 +8,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Callable
 
-from src.ingestion import get_youtube_transcript
+from src.ingestion import TranscriptUnavailableError, get_youtube_transcript
 
 
 class PipelineStatus(str, Enum):
@@ -139,6 +139,21 @@ class PipelineService:
             if apply_delays and ingest_delay > 0:
                 self.sleep(ingest_delay)
             transcript = self.ingest(target.video_id)
+        except TranscriptUnavailableError as exc:
+            warnings: tuple[str, ...] = ()
+            try:
+                self.sqlite_exporter.mark_skipped(
+                    target.video_id, reason="no_transcript"
+                )
+            except Exception as sql_exc:  # noqa: BLE001
+                warnings = (f"skip persistence: {type(sql_exc).__name__}: {sql_exc}",)
+            return PipelineResult(
+                target,
+                PipelineStatus.SKIPPED,
+                PipelineStage.INGESTION,
+                f"no_transcript: {exc}",
+                warnings=warnings,
+            )
         except Exception as exc:  # noqa: BLE001 - converted to a typed pipeline outcome
             message = f"{type(exc).__name__}: {exc}"
             status = (

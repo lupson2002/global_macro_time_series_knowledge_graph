@@ -33,6 +33,30 @@ from src.config import settings
 _YT_HTTP_TIMEOUT = 60
 
 
+class TranscriptUnavailableError(RuntimeError):
+    """Raised when subtitles/transcripts are permanently absent or disabled for a video."""
+    pass
+
+
+def is_transcript_unavailable(error: Exception | str | None) -> bool:
+    """Return whether an error indicates permanent lack of subtitles/transcripts."""
+    if error is None:
+        return False
+    msg = str(error).lower()
+    return any(
+        marker in msg
+        for marker in (
+            "no subtitle file produced",
+            "subtitles are disabled",
+            "transcriptsdisabled",
+            "notranscriptfound",
+            "could not retrieve a transcript",
+            "no transcript",
+            "subtitles are unavailable",
+        )
+    )
+
+
 def _build_yt_dlp_opts(cookies_path: Path | None, proxy_url: str | None) -> dict:
     """Build yt-dlp options dict for transcript fetch.
 
@@ -205,6 +229,11 @@ def get_youtube_transcript(video_id: str) -> str:
             time.sleep(wait_s)
         else:
             break
+
+    if is_transcript_unavailable(last_error):
+        raise TranscriptUnavailableError(
+            f"Transcript unavailable for video {video_id}: {last_error}"
+        )
 
     raise RuntimeError(
         f"Failed to fetch YouTube transcript for video {video_id} after "

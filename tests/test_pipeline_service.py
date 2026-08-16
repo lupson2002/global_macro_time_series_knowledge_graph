@@ -193,6 +193,24 @@ class PipelineServiceTests(unittest.TestCase):
             )
             self.assertEqual(service.sleep.call_args_list, [call(2), call(3)])
 
+    def test_transcript_unavailable_marks_skipped_and_returns_skipped_status(self):
+        from src.ingestion import TranscriptUnavailableError
+
+        with tempfile.TemporaryDirectory() as directory:
+            service, llm, sqlite_exporter, _ = self.make_service(
+                Path(directory) / "missing.db",
+                ingest=Mock(side_effect=TranscriptUnavailableError("no subtitles")),
+            )
+            target = VideoTarget("abcdefghijk", "Channel")
+            result = service.process(target)
+
+        self.assertEqual(result.status, PipelineStatus.SKIPPED)
+        self.assertEqual(result.stage, PipelineStage.INGESTION)
+        sqlite_exporter.mark_skipped.assert_called_once_with(
+            "abcdefghijk", reason="no_transcript"
+        )
+        llm.analyze_transcript.assert_not_called()
+
 
 class PipelineCliExitTests(unittest.TestCase):
     def test_video_failure_returns_nonzero_process_status(self):
@@ -223,3 +241,32 @@ class PipelineCliExitTests(unittest.TestCase):
             ):
                 exit_code = pipeline_cli.main()
         self.assertEqual(exit_code, 1)
+
+    def test_video_skipped_returns_zero_process_status(self):
+        import main as pipeline_cli
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = VideoTarget("abcdefghijk", "Channel")
+            skipped = PipelineResult(
+                target,
+                PipelineStatus.SKIPPED,
+                PipelineStage.INGESTION,
+                "no_transcript: no subtitles",
+            )
+            service = Mock()
+            service.process.return_value = skipped
+            argv = [
+                "main.py",
+                "--video_id",
+                target.video_id,
+                "--db_path",
+                str(root / "macro.db"),
+                "--vault_dir",
+                str(root / "vault"),
+            ]
+            with patch.object(sys, "argv", argv), patch.object(
+                pipeline_cli, "PipelineService", return_value=service
+            ):
+                exit_code = pipeline_cli.main()
+        self.assertEqual(exit_code, 0)
