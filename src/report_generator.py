@@ -93,8 +93,8 @@ def _parse_korean_json_array(content: str) -> list:
         return []
 
 
-# 👑 [2026-08-07 사용자 결정] 번역은 Groq(Llama70BRouter) 우선, NIM 폴백.
-# M4 에서 NIM 우선으로 뒤집혔던 것을 원래 의도(Groq 우선)로 복원.
+# 👑 [2026-08-07 사용자 결정] 번역은 경량 라우터(Llama70BRouter) 우선, NIM 폴백.
+# [2026-08-15] Groq 전면 비활성화 — Ollama Cloud 우선, NIM 폴백으로 통일.
 # M4 의 클라이언트 재사용(싱글턴) 개선은 유지.
 _router: "Llama70BRouter | None" = None
 
@@ -111,7 +111,7 @@ def _get_translation_router():
 def _translate_to_korean_map(items: list) -> dict:
     """👑 [Ver 4.9] (key, text) 쌍을 일괄 한국어 번역 → {key: korean} 맵.
 
-    **Groq(Llama70BRouter) 우선 → 공통 실행 계층의 NIM 폴백.**
+    **Ollama Cloud(Llama70BRouter) 우선 → 공통 실행 계층의 NIM 폴백.**
     원문 결정론적 렌더 원칙 유지: LLM은 '번역'만 수행(재생성·요약 금지).
     빈 항목·파싱 실패 시 원문 그대로(fallback). 청크 단위 호출(출력 절삭 방지).
     """
@@ -782,9 +782,11 @@ def generate_morning_report(db_path: str, vault_dir: str, api_key: str = None, l
     # 실패 시 원문 fallback 되므로 리포트 생성은 중단되지 않음.
     tr_items = _collect_translatable(reports)
     if tr_items:
-        print(f"🌐 Translating {len(tr_items)} evidence texts to Korean via Groq (Llama70BRouter, NIM 폴백)...")
+        print(f"🌐 Translating {len(tr_items)} evidence texts to Korean via Ollama Cloud (Llama70BRouter, NIM 폴백)...")
         tr_map = _translate_to_korean_map(tr_items)
-        print(f"   translated {len(tr_map)}/{len(tr_items)} items.")
+        orig_dict = dict(tr_items)
+        success_tr = sum(1 for k, v in tr_map.items() if v != orig_dict.get(k))
+        print(f"   translated {success_tr}/{len(tr_items)} items successfully.")
     else:
         tr_map = {}
 

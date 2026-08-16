@@ -59,11 +59,17 @@ def check_processed(db_path: str, video_id: str, include_skipped: bool = True) -
             if cur.fetchone() is not None:
                 return True
             if include_skipped:
-                cur.execute("SELECT 1 FROM skipped_videos WHERE video_id = ?", (video_id,))
-                return cur.fetchone() is not None
+                try:
+                    cur.execute(
+                        "SELECT 1 FROM skipped_videos WHERE video_id = ?", (video_id,)
+                    )
+                    return cur.fetchone() is not None
+                except sqlite3.OperationalError:
+                    # Legacy schema without skipped_videos table
+                    return False
             return False
-    except (sqlite3.Error, OSError):
-        # Legacy DBs may not have skipped_videos yet; conservatively allow retry.
+    except Exception as exc:
+        print(f"   [WARN] check_processed failed for {video_id} on {db_path}: {exc}")
         return False
 
 
